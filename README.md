@@ -22,7 +22,7 @@ At minimum, the app can show any GTFS table you provide. Some features need spec
 
 ## Quick Start
 1. Clone or download this repository.
-2. Open `index.html` in your browser (double-click is fine).
+2. Open `GTFS Viewer.html` in your browser (double-click is fine).
 3. Drag & drop GTFS `.txt` files (or a `.zip` containing them) into the page.
 4. Start exploring.
 
