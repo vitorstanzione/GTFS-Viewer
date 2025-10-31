@@ -10,7 +10,10 @@
     body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;background:radial-gradient(1200px 1200px at 10% -10%,rgba(77,163,255,.08),transparent),radial-gradient(1000px 800px at 110% 10%,rgba(34,211,238,.08),transparent),var(--bg);color:var(--text);min-height:100vh}
     header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
     header h1{margin:0;font-size:18px;letter-spacing:.2px}
-    .tabs{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+    .tabs{display:flex;flex-direction:column;gap:12px;align-items:flex-start;width:100%}
+    .tab-header{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%;flex-wrap:wrap}
+    .tab-header-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .tab-about{display:flex;align-items:center}
     .tab-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .tab-group{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
     .tab-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);opacity:.8}
@@ -65,6 +68,16 @@
     /* Color chips */
     .chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:#0f1520}
     .chip-swatch{width:14px;height:14px;border-radius:4px;border:1px solid #0003}
+    .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(8,13,20,.65);backdrop-filter:blur(4px)}
+    .modal[hidden]{display:none}
+    .modal-dialog{position:relative;max-width:520px;width:100%;background:linear-gradient(180deg,rgba(17,24,39,.95),rgba(17,24,39,.9));border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 18px 45px rgba(0,0,0,.35);overflow:auto;max-height:90vh}
+    .modal-dialog h2{margin-top:0;margin-bottom:16px;font-size:18px}
+    .modal-close{position:absolute;top:14px;right:14px;background:transparent;border:1px solid transparent;color:var(--muted);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center}
+    .modal-close:hover{background:rgba(255,255,255,.05);color:var(--text)}
+    .about-body p{margin:0 0 12px;line-height:1.6;color:var(--muted)}
+    .about-body p strong{color:var(--text)}
+    .about-body a{color:#7bb8ff;text-decoration:none}
+    .about-body a:hover{text-decoration:underline}
   </style>
 </head>
 <body>
@@ -109,11 +122,24 @@
     <section id="tab-shapes" class="content"></section>
     <section id="tab-stop_times" class="content"></section>
     <section id="tab-stops" class="content"></section>
-    <section id="tab-transfers" class="content"></section>
-    <section id="tab-trips" class="content"></section>
-  </main>
+  <section id="tab-transfers" class="content"></section>
+  <section id="tab-trips" class="content"></section>
+</main>
 
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
+  <div class="modal-dialog">
+    <button type="button" class="modal-close" aria-label="Close About dialog">×</button>
+    <div class="about-body">
+      <h2 id="aboutTitle">About</h2>
+      <p><strong>GTFS Viewer (Pure HTML)</strong><br />A lightweight tool to quickly inspect static GTFS feeds directly in your browser — no server or installation required.</p>
+      <p><strong>About the project:</strong><br />Created to help visualize GTFS data easily without any setup.<br />You can fork this project on GitHub to make your own version.<br />Official repository: <a href="https://github.com/vitorstanzione/GTFS-Viewer" target="_blank" rel="noopener noreferrer">github.com/vitorstanzione/GTFS-Viewer</a></p>
+      <p><strong>License:</strong><br />This project is public domain (The Unlicense).<br />You can copy or modify it freely in your own copy — just don’t send changes back here.</p>
+      <p><strong>Credits:</strong><br />Created with ❤️ by <a href="https://www.linkedin.com/in/vitorstanzione/" target="_blank" rel="noopener noreferrer">Vítor Stanzione</a>,<br />using <strong>OpenAI Codex</strong>, on <strong>October 30, 2025</strong>.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     // ===== Elements & state =====
     const tabsEl = document.getElementById('tabs');
@@ -186,10 +212,24 @@
         .filter(def => containers[def.key]?.dataset.loaded === 'true')
         .map(def => ({ id:def.key, label:def.label, target:`tab-${def.key}` }));
 
+      const headerRow = document.createElement('div');
+      headerRow.className = 'tab-header';
+
       const primaryRow = document.createElement('div');
-      primaryRow.className = 'tab-row';
+      primaryRow.className = 'tab-header-left';
       baseDefs.forEach(def => primaryRow.appendChild(createTabButton(def, activeId)));
-      tabsEl.appendChild(primaryRow);
+
+      const aboutWrap = document.createElement('div');
+      aboutWrap.className = 'tab-about';
+      const aboutButton = document.createElement('button');
+      aboutButton.type = 'button';
+      aboutButton.className = 'tab-btn';
+      aboutButton.textContent = 'About';
+      aboutButton.addEventListener('click', openAboutModal);
+      aboutWrap.appendChild(aboutButton);
+
+      headerRow.append(primaryRow, aboutWrap);
+      tabsEl.appendChild(headerRow);
 
       if (importedDefs.length) {
         const group = document.createElement('div');
@@ -210,6 +250,22 @@
       if (el) el.classList.add('active');
       setTabs(id);
     }
+
+    const aboutModal = document.getElementById('aboutModal');
+    const aboutClose = aboutModal?.querySelector('.modal-close');
+
+    function openAboutModal(){ if (aboutModal){ aboutModal.hidden = false; aboutModal.focus(); } }
+    function closeAboutModal(){ if (aboutModal){ aboutModal.hidden = true; } }
+
+    aboutClose?.addEventListener('click', closeAboutModal);
+    aboutModal?.addEventListener('click', event => {
+      if (event.target === aboutModal) closeAboutModal();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !aboutModal?.hidden){
+        closeAboutModal();
+      }
+    });
 
     // ===== File handling =====
     function handleDrop(ev) { ev.preventDefault(); stagedFiles = Array.from(ev.dataTransfer.files||[]); renderSelectedFiles(); }
