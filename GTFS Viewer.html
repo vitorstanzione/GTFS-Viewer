@@ -356,25 +356,83 @@
     function isValidHex6(v){ return /^[#]?[0-9a-fA-F]{6}$/.test(String(v||'')); }
     function normalizeHex(v){ v=String(v||'').trim(); return v? (v.startsWith('#')? v : '#'+v) : ''; }
 
+    function sanitizeFileName(name){
+      const base=String(name||'data').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+      return base || 'data';
+    }
+    function rowsToCSV(headers, rows){
+      const allRows=[headers, ...rows];
+      return allRows.map(row=>row.map(cell=>{
+        const value=String(cell??'');
+        return /[",\n]/.test(value) ? '"'+value.replace(/"/g,'""')+'"' : value;
+      }).join(',')).join('\n');
+    }
+    function rowsToJSON(headers, rows){
+      const objects=rows.map(row=>{
+        const obj={};
+        headers.forEach((h,idx)=>{ obj[h]=row[idx]??''; });
+        return obj;
+      });
+      return JSON.stringify(objects,null,2);
+    }
+    function downloadTextFile(filename, text, mime){
+      const blob=new Blob([text],{ type:(mime||'text/plain')+';charset=utf-8' });
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a');
+      link.href=url;
+      link.download=filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(()=>URL.revokeObjectURL(url),0);
+    }
+    function copyToClipboard(text){
+      if (navigator.clipboard?.writeText){
+        return navigator.clipboard.writeText(text);
+      }
+      return new Promise((resolve,reject)=>{
+        const textarea=document.createElement('textarea');
+        textarea.value=text;
+        textarea.style.position='fixed';
+        textarea.style.top='-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          resolve();
+        } catch (err) {
+          reject(err);
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      });
+    }
+
     function renderDataTable(container, headers, rows, title){
       container.innerHTML=''; const state=createState(headers,rows); container.__state=state;
       const card=document.createElement('div'); card.className='card';
       const headerBar=document.createElement('div'); headerBar.className='toolbar';
       const titleEl=document.createElement('h2'); titleEl.style.margin='0'; titleEl.textContent=title;
       const countEl=document.createElement('span'); countEl.className='pill'; countEl.textContent=`${rows.length.toLocaleString()} rows`;
+      const exportWrap=document.createElement('div'); exportWrap.className='actions';
+      const exportCsvBtn=mkBtn('Export CSV');
+      const exportJsonBtn=mkBtn('Export JSON');
+      const exportCopyBtn=mkBtn('Copy to clipboard');
+      exportWrap.append(exportCsvBtn,exportJsonBtn,exportCopyBtn);
       const spacer=document.createElement('div'); spacer.className='spacer';
       const pageSizeSel=document.createElement('select'); pageSizeSel.className='select'; [25,50,100,250,1000].forEach(n=>{const o=document.createElement('option'); o.value=String(n); o.textContent=`${n}/page`; pageSizeSel.appendChild(o);}); pageSizeSel.value=String(state.pageSize);
       const pager=document.createElement('div'); pager.className='pagination';
       const btnFirst=mkBtn('⏮'), btnPrev=mkBtn('◀'), pageInfo=document.createElement('span'), btnNext=mkBtn('▶'), btnLast=mkBtn('⏭'); pageInfo.className='pill';
       pager.append(btnFirst,btnPrev,pageInfo,btnNext,btnLast);
-      headerBar.append(titleEl,countEl,spacer,pageSizeSel,pager);
+      headerBar.append(titleEl,countEl,exportWrap,spacer,pageSizeSel,pager);
       const scroller=document.createElement('div'); scroller.className='scroll';
       const table=document.createElement('table');
       const thead=document.createElement('thead'); const trHead=document.createElement('tr'); const headerCells=[]; headers.forEach((h,idx)=>{ const th=document.createElement('th'); th.classList.add('sortable'); th.setAttribute('aria-sort','none'); const inner=document.createElement('span'); inner.className='header-inner'; const label=document.createElement('span'); label.textContent=h; const indicator=document.createElement('span'); indicator.className='sort-indicator'; indicator.textContent=''; inner.append(label,indicator); th.appendChild(inner); th.addEventListener('click',()=>{ if(state.sortColumn===idx){ state.sortDirection=state.sortDirection==='asc'?'desc':'asc'; } else { state.sortColumn=idx; state.sortDirection='asc'; } state.page=1; draw(); }); headerCells.push({th,indicator}); trHead.appendChild(th); }); thead.appendChild(trHead);
       const trFilters=document.createElement('tr'); trFilters.className='filters'; headers.forEach((h,idx)=>{ const th=document.createElement('th'); const input=document.createElement('input'); input.className='filter-input'; input.type='text'; input.placeholder='Filter'; input.value=state.filters[idx]; input.addEventListener('input',()=>{ state.filters[idx]=input.value; state.page=1; draw(); }); th.appendChild(input); trFilters.appendChild(th); }); thead.appendChild(trFilters);
       const tbody=document.createElement('tbody'); table.appendChild(thead); table.appendChild(tbody); scroller.appendChild(table); card.appendChild(headerBar); card.appendChild(scroller); container.appendChild(card);
 
-      function draw(){
+      function computeActiveRows(){
         const filteredRows=applyFilters(state.rows,state.headers,state.filters);
         let workingRows=filteredRows;
         if (Number.isInteger(state.sortColumn)){
@@ -386,6 +444,13 @@
             return dir*String(av).localeCompare(String(bv),undefined,{numeric:true,sensitivity:'base'});
           });
         }
+        state.filteredRows=filteredRows;
+        state.workingRows=workingRows;
+        return { filteredRows, workingRows };
+      }
+
+      function draw(){
+        const { filteredRows, workingRows } = computeActiveRows();
         const {pageRows,page,pages}=paginate(workingRows,state.page,state.pageSize); state.page=page;
         tbody.innerHTML=''; const frag=document.createDocumentFragment();
         pageRows.forEach(r=>{ const tr=document.createElement('tr'); r.forEach((cell,idx)=>{ const td=document.createElement('td'); const header=state.headers[idx]||''; const val=String(cell||'');
@@ -404,7 +469,37 @@
         btnFirst.disabled=page<=1; btnPrev.disabled=page<=1; btnNext.disabled=page>=pages; btnLast.disabled=page>=pages;
       }
       pageSizeSel.addEventListener('change',()=>{ state.pageSize=parseInt(pageSizeSel.value,10); state.page=1; draw(); });
-      btnFirst.addEventListener('click',()=>{ state.page=1; draw(); }); btnPrev.addEventListener('click',()=>{ state.page=Math.max(1,state.page-1); draw(); }); btnNext.addEventListener('click',()=>{ state.page=state.page+1; draw(); }); btnLast.addEventListener('click',()=>{ const filtered=applyFilters(state.rows,state.headers,state.filters); state.page=Math.max(1,Math.ceil(filtered.length/state.pageSize)); draw(); });
+      btnFirst.addEventListener('click',()=>{ state.page=1; draw(); }); btnPrev.addEventListener('click',()=>{ state.page=Math.max(1,state.page-1); draw(); }); btnNext.addEventListener('click',()=>{ state.page=state.page+1; draw(); }); btnLast.addEventListener('click',()=>{ const { filteredRows } = computeActiveRows(); state.page=Math.max(1,Math.ceil(filteredRows.length/state.pageSize)); draw(); });
+      function prepareExportRows(){
+        const { workingRows } = computeActiveRows();
+        return workingRows;
+      }
+      function performCopyFeedback(){
+        const original=exportCopyBtn.textContent;
+        exportCopyBtn.textContent='Copied!';
+        exportCopyBtn.disabled=true;
+        setTimeout(()=>{ exportCopyBtn.textContent=original; exportCopyBtn.disabled=false; },1500);
+      }
+      exportCsvBtn.addEventListener('click',()=>{
+        const activeRows=prepareExportRows();
+        const csv=rowsToCSV(state.headers,activeRows);
+        const fileName=`${sanitizeFileName(title)}.csv`;
+        downloadTextFile(fileName,csv,'text/csv');
+      });
+      exportJsonBtn.addEventListener('click',()=>{
+        const activeRows=prepareExportRows();
+        const json=rowsToJSON(state.headers,activeRows);
+        const fileName=`${sanitizeFileName(title)}.json`;
+        downloadTextFile(fileName,json,'application/json');
+      });
+      exportCopyBtn.addEventListener('click',()=>{
+        const activeRows=prepareExportRows();
+        const csv=rowsToCSV(state.headers,activeRows);
+        copyToClipboard(csv).then(performCopyFeedback).catch(()=>{
+          exportCopyBtn.textContent='Copy failed';
+          setTimeout(()=>{ exportCopyBtn.textContent='Copy to clipboard'; },1500);
+        });
+      });
       draw();
     }
 
