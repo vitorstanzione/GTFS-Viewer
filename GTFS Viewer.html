@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GTFS Viewer — Trips, Stop Times & Routes</title>
+  <title>GTFS Viewer</title>
   <style>
     :root { --bg:#0b0f14; --card:#121821; --muted:#8fa3b8; --text:#e7edf3; --border:#1f2937; }
     *{box-sizing:border-box}
@@ -66,7 +66,7 @@
 </head>
 <body>
   <header>
-    <h1>GTFS Viewer — Trips, Stop Times & Routes</h1>
+    <h1>GTFS Viewer</h1>
     <div class="tabs" id="tabs"></div>
   </header>
 
@@ -74,7 +74,7 @@
     <section id="home" class="content active">
       <div class="card">
         <h2 style="margin-top:0">Home</h2>
-        <p>Import <span class="kbd">trips.txt</span>, <span class="kbd">stop_times.txt</span>, and <span class="kbd">routes.txt</span>. The <strong>Simple trip table</strong> appears next to Home only when <em>all three</em> are loaded. The Sign column uses <code>route_short_name</code> from <code>routes.txt</code>.</p>
+        <p>Import <strong>GTFS files</strong> and visualize its data. The <strong>Simple trip table</strong> appears next to Home only when <span class="kbd">trips.txt</span>, <span class="kbd">stop_times.txt</span>, and <span class="kbd">routes.txt</span> are loaded.
         <div class="file-box" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
           <label for="fileInput">Select GTFS files (.txt, .csv, .zip)</label>
           <input id="fileInput" type="file" accept=".txt,.csv,.zip" multiple />
@@ -395,4 +395,5 @@
     setTabs('home');
   </script>
 </body>
+
 </html>
