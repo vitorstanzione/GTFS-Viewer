@@ -1178,7 +1178,7 @@ self.onmessage = function(event){
         pageRows.forEach(r=>{ const tr=document.createElement('tr'); r.forEach((cell,idx)=>{ const td=document.createElement('td'); const header=state.headers[idx]||''; const val=String(cell||'');
           if (/url/i.test(header) && /^https?:\/\//i.test(val)) { const a=document.createElement('a'); a.href=val; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; td.appendChild(a); }
           else if (/color/i.test(header) && isValidHex6(val)) { const chip=document.createElement('span'); chip.className='chip'; const sw=document.createElement('span'); sw.className='chip-swatch'; sw.style.background=normalizeHex(val); const tx=document.createElement('span'); tx.textContent=val.replace(/^#/,'').toUpperCase(); if (/route_text_color/i.test(header)) tx.style.color=normalizeHex(val); chip.appendChild(sw); chip.appendChild(tx); td.appendChild(chip); }
-          else { td.textContent=val; if (/(?:_id$)|^(?:\d{1,2}:\d{2}:\d{2})$/.test(header)) td.style.fontFamily='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'; }
+          else { td.textContent=val; if (/_id$/.test(header) || /^\d{1,2}:\d{2}:\d{2}$/.test(val)) td.style.fontFamily='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'; }
           tr.appendChild(td); }); frag.appendChild(tr); });
         tbody.appendChild(frag); pageInfo.textContent=`Page ${page} / ${pages}`; countEl.textContent=`${filteredRows.length.toLocaleString()} rows`;
         headerCells.forEach(({th,indicator},idx)=>{
