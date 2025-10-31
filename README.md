@@ -5,19 +5,19 @@ A lightweight, browser-only GTFS viewer that loads standard GTFS `.txt` files so
 > **Why?** Sometimes you just want to inspect GTFS feeds quickly without installing tooling or spinning up a backend.
 
 ## Features
-- 🔍 View GTFS tables directly in your browser
+- 🔍 View static GTFS tables directly in your browser
 - 🔄 Client-side filtering, sorting, and (optionally) multi-column sort
 - 📁 Works with individual `.txt` files or a `.zip` of a GTFS feed
-- 📊 “Simple trip table” view (requires `routes.txt`, `trips.txt`, and `stop_times.txt`)
+- 📊 “OD time table” view (requires `routes.txt`, `trips.txt`, and `stop_times.txt`)
 - 🎨 Route/brand colors rendered from `route_color` / `route_text_color` when valid
 - 🔗 Clickable URLs where present (e.g., `route_url`, `agency_url`)
 - 💾 Export current view to CSV / JSON / clipboard
 
 ## What it loads
-At minimum, the app can show any GTFS table you provide. Some features need specific files:
+At minimum, the app can show any static GTFS table you provide. Some features need specific files:
 
 - **Core tables supported:** `agency.txt`, `stops.txt`, `routes.txt`, `trips.txt`, `stop_times.txt`, `calendar.txt`, `calendar_dates.txt`, `shapes.txt`, `feed_info.txt`, etc.
-- **Required for “Simple trip table”:** `routes.txt`, `trips.txt`, `stop_times.txt`
+- **Required for “OD time table”:** `routes.txt`, `trips.txt`, `stop_times.txt`
 
 ## Quick Start
 1. Download `GTFS Viewer.html` file.
