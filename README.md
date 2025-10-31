@@ -35,7 +35,6 @@ At minimum, the app can show any GTFS table you provide. Some features need spec
 
 ## Roadmap / Ideas
 - Multi-column sorting (Shift+Click)
-- Export current view (CSV, JSON, copy to clipboard)
 - Column show/hide and re-order
 - Persistent filters (saved in localStorage)
 - Basic charts (e.g., trips per route, stops per route)
