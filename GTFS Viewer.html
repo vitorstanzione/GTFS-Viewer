@@ -461,10 +461,14 @@
       const locationsData = parsedData['locations.geojson'];
       let locationsHasData = false;
       if (hasLocations){
-        if (!locationsData || !Array.isArray(locationsData.rows)) {
-          locationsHasData = true;
-        } else {
-          locationsHasData = locationsData.rows.length>0;
+        if (locationsData && Array.isArray(locationsData.rows)){
+          locationsHasData = locationsData.rows.length > 0;
+        } else if (locationsData && locationsData.error){
+          // Parsing failed; keep locationsHasData false so dependent requirements trigger
+          locationsHasData = false;
+        } else if (locationsData){
+          // Unexpected structure; treat as no data to avoid false positives
+          locationsHasData = false;
         }
       }
       const pathwaysData = parsedData.pathways;
