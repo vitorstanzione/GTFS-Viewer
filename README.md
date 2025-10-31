@@ -44,13 +44,15 @@ At minimum, the app can show any GTFS table you provide. Some features need spec
 
 ## Development
 - Pure front-end (HTML + JS + CSS). No build tools required.
-- Keep PRs small and focused. Add a short before/after note or a GIF if UI changes.
+- This repository is read-only: I maintain the original version myself.
+- If you’d like to modify or extend it, please **fork** the project and make changes in your own copy.
 
 ## Contributing
-Issues and PRs are welcome! If you add a feature, please include:
-- A short description
-- Minimal test data or steps to reproduce
-- Any trade-offs or limitations
+This repository does **not accept pull requests or direct changes**.  
+If you’d like to build upon it, feel free to fork it or clone it and create your own version.  
+You don’t need permission — just give credit if you want to.
 
 ## License
-This project is released under **The Unlicense** (public domain). See [`LICENSE`](./LICENSE) for details.
+This project is released under **The Unlicense** (public domain).  
+You’re free to copy, modify, and use it in your own projects.  
+See [`LICENSE`](./LICENSE) for details.
