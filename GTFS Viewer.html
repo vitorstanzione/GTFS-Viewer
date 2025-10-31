@@ -53,6 +53,8 @@
     th.sortable.sort-active .sort-indicator{opacity:1;color:#7bb8ff}
     tbody tr:hover{background:rgba(255,255,255,0.03)}
     .scroll{overflow:auto;border:1px solid var(--border);border-radius:12px;background:#0f1520}
+    .data-card{height:95vh;max-height:95vh;display:flex;flex-direction:column;}
+    .data-card .table-scroll{flex:1;min-height:0;}
     .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;background:#0f1520;border:1px solid var(--border);color:#8fa3b8;font-size:12px}
     .file-pill{margin-top:6px}
     .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:#c7d2fe}
@@ -274,6 +276,12 @@
 
     initParserWorker();
 
+    function updateImportButtonState(){
+      if (!importBtn) return;
+      const hasFiles = stagedFiles.length > 0;
+      importBtn.disabled = importInProgress || !hasFiles;
+    }
+
     // ===== Tabs =====
     function createTabButton(def, activeId) {
       const button = document.createElement('button');
@@ -466,7 +474,8 @@
     });
     clearBtn.addEventListener('click', () => {
       if (importInProgress) return;
-      stagedFiles=[]; fileInput.value=''; selectedFilesEl.innerHTML='';
+      stagedFiles=[]; fileInput.value='';
+      renderSelectedFiles();
       Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; delete el.dataset.available; delete el.dataset.fastMode; });
       if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
       parsedData={}; failedImports=[]; fastModeConfig={}; loadedFileNames.clear();
@@ -476,7 +485,15 @@
       showContent('home');
     });
 
-    function renderSelectedFiles(){ if (!stagedFiles.length){ selectedFilesEl.innerHTML=''; return;} selectedFilesEl.innerHTML = stagedFiles.map(f=>`<span class="pill file-pill">${f.name}<span style="opacity:.6">${formatSize(f.size)}</span></span>`).join(' '); }
+    function renderSelectedFiles(){
+      if (!selectedFilesEl) return;
+      if (!stagedFiles.length){
+        selectedFilesEl.innerHTML='';
+      } else {
+        selectedFilesEl.innerHTML = stagedFiles.map(f=>`<span class="pill file-pill">${f.name}<span style="opacity:.6">${formatSize(f.size)}</span></span>`).join(' ');
+      }
+      updateImportButtonState();
+    }
     function formatSize(bytes){ if(bytes<1024)return `${bytes} B`; const kb=bytes/1024; if(kb<1024)return `${kb.toFixed(1)} KB`; const mb=kb/1024; return `${mb.toFixed(2)} MB`; }
 
     function registerLoadedFile(def, actualName){
@@ -673,9 +690,9 @@
     function setImportInProgress(flag){
       importInProgress = flag;
       if (importBtn){
-        importBtn.disabled = flag;
         importBtn.textContent = flag ? 'Importing…' : originalImportBtnText;
       }
+      updateImportButtonState();
       if (chooseBtn) chooseBtn.disabled = flag;
       if (clearBtn) clearBtn.disabled = flag;
     }
@@ -790,7 +807,8 @@
     function updateImportStatus(text, options = {}){
       if (!importStatusEl) return;
       clearTimeout(importStatusHideTimer);
-      if (!text){
+      const normalized = typeof text === 'string' ? text.trim() : text;
+      if (!normalized){
         importStatusEl.hidden = true;
         importStatusEl.textContent = '';
         return;
@@ -1216,7 +1234,7 @@ self.onmessage = function(event){
 
     function renderDataTable(container, headers, rows, title){
       container.innerHTML=''; const state=createState(headers,rows); container.__state=state;
-      const card=document.createElement('div'); card.className='card';
+      const card=document.createElement('div'); card.className='card data-card';
       const headerBar=document.createElement('div'); headerBar.className='toolbar';
       const titleEl=document.createElement('h2'); titleEl.style.margin='0'; titleEl.textContent=title;
       const countEl=document.createElement('span'); countEl.className='pill'; countEl.textContent=`${rows.length.toLocaleString()} rows`;
@@ -1236,7 +1254,7 @@ self.onmessage = function(event){
       const btnFirst=mkBtn('⏮'), btnPrev=mkBtn('◀'), pageInfo=document.createElement('span'), btnNext=mkBtn('▶'), btnLast=mkBtn('⏭'); pageInfo.className='pill';
       pager.append(btnFirst,btnPrev,pageInfo,btnNext,btnLast);
       headerBar.append(titleEl,countEl,exportWrap,spacer,pageSizeSel,pager);
-      const scroller=document.createElement('div'); scroller.className='scroll';
+      const scroller=document.createElement('div'); scroller.className='scroll table-scroll';
       const table=document.createElement('table');
       const thead=document.createElement('thead'); const trHead=document.createElement('tr'); const headerCells=[]; headers.forEach((h,idx)=>{ const th=document.createElement('th'); th.classList.add('sortable'); th.setAttribute('aria-sort','none'); const inner=document.createElement('span'); inner.className='header-inner'; const label=document.createElement('span'); label.textContent=h; const indicator=document.createElement('span'); indicator.className='sort-indicator'; indicator.textContent=''; inner.append(label,indicator); th.appendChild(inner); th.addEventListener('click',()=>{ if(state.sortColumn===idx){ state.sortDirection=state.sortDirection==='asc'?'desc':'asc'; } else { state.sortColumn=idx; state.sortDirection='asc'; } state.page=1; draw(); }); headerCells.push({th,indicator}); trHead.appendChild(th); }); thead.appendChild(trHead);
       const trFilters=document.createElement('tr'); trFilters.className='filters'; headers.forEach((h,idx)=>{ const th=document.createElement('th'); const input=document.createElement('input'); input.className='filter-input'; input.type='text'; input.placeholder='Filter'; input.value=state.filters[idx]; input.addEventListener('input',()=>{ state.filters[idx]=input.value; state.page=1; draw(); }); th.appendChild(input); trFilters.appendChild(th); }); thead.appendChild(trFilters);
@@ -1363,6 +1381,7 @@ self.onmessage = function(event){
     }
 
     // ===== Init =====
+    updateImportButtonState();
     setTabs('home');
   </script>
 </body>
