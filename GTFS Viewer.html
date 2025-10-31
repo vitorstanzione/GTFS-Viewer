@@ -100,8 +100,8 @@
       <div class="card">
         <p>Import <strong>GTFS files</strong> and visualize its data.<br />The <strong>OD time table</strong> appears next to Home only when <span class="kbd">trips.txt</span>, <span class="kbd">stop_times.txt</span>, and <span class="kbd">routes.txt</span> are loaded.
         <div class="file-box" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
-          <label for="fileInput">Select GTFS files (.txt, .csv, .zip)</label>
-          <input id="fileInput" type="file" accept=".txt,.csv,.zip" multiple />
+          <label for="fileInput">Select GTFS files (.txt, .csv, .geojson, .zip)</label>
+          <input id="fileInput" type="file" accept=".txt,.csv,.geojson,.zip" multiple />
           <div class="file-trigger">
             <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
             <button class="btn primary" id="importBtn">Import</button>
@@ -406,12 +406,18 @@
       const names = new Set();
       const canonical = String(def.file||'').toLowerCase();
       if (canonical) names.add(canonical);
-      if (actualName) names.add(String(actualName).toLowerCase());
+      const actualLower = actualName ? String(actualName).toLowerCase() : '';
+      if (actualLower) names.add(actualLower);
       if (canonical.endsWith('.txt')) {
         names.add(canonical.replace(/\.txt$/, '.csv'));
       }
       if (/\.geojson(?:\.txt)?$/.test(canonical)) {
         names.add(canonical.replace(/\.txt$/, ''));
+      }
+      if (actualLower.endsWith('.geojson')) {
+        names.add(`${actualLower}.txt`);
+      } else if (actualLower.endsWith('.geojson.txt')) {
+        names.add(actualLower.replace(/\.txt$/, ''));
       }
       names.forEach(name => { if (name) loadedFileNames.add(name); });
     }
@@ -872,7 +878,7 @@ async function handleImport(files){
           const baseName = relativePath.split('/').pop();
           if (!baseName) return;
           const lower = baseName.toLowerCase();
-          if (!lower.endsWith('.txt') && !lower.endsWith('.csv')) return;
+          if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) return;
           entries.push({ order: order++, entry: entry, name: baseName, lowerName: lower });
         });
         entries.sort(function(a,b){ return a.order - b.order; });
