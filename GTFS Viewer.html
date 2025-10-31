@@ -110,17 +110,37 @@
 
     <section id="tab-simple" class="content"></section>
     <section id="tab-agency" class="content"></section>
+    <section id="tab-areas" class="content"></section>
+    <section id="tab-attributions" class="content"></section>
+    <section id="tab-booking_rules" class="content"></section>
     <section id="tab-calendar" class="content"></section>
     <section id="tab-calendar_dates" class="content"></section>
     <section id="tab-fare_attributes" class="content"></section>
+    <section id="tab-fare_leg_join_rules" class="content"></section>
+    <section id="tab-fare_leg_rules" class="content"></section>
+    <section id="tab-fare_media" class="content"></section>
+    <section id="tab-fare_products" class="content"></section>
     <section id="tab-fare_rules" class="content"></section>
+    <section id="tab-fare_transfer_rules" class="content"></section>
+    <section id="tab-feed_info" class="content"></section>
     <section id="tab-frequencies" class="content"></section>
+    <section id="tab-levels" class="content"></section>
+    <section id="tab-location_group_stops" class="content"></section>
+    <section id="tab-location_groups" class="content"></section>
+    <section id="tab-locations.geojson" class="content"></section>
+    <section id="tab-networks" class="content"></section>
+    <section id="tab-pathways" class="content"></section>
+    <section id="tab-rider_categories" class="content"></section>
+    <section id="tab-route_networks" class="content"></section>
     <section id="tab-routes" class="content"></section>
     <section id="tab-shapes" class="content"></section>
+    <section id="tab-stop_areas" class="content"></section>
     <section id="tab-stop_times" class="content"></section>
     <section id="tab-stops" class="content"></section>
-  <section id="tab-transfers" class="content"></section>
-  <section id="tab-trips" class="content"></section>
+    <section id="tab-timeframes" class="content"></section>
+    <section id="tab-transfers" class="content"></section>
+    <section id="tab-translations" class="content"></section>
+    <section id="tab-trips" class="content"></section>
 </main>
 
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
@@ -144,16 +164,36 @@
 
     const FILE_DEFS = [
       { file:'agency.txt', key:'agency', label:'Agency' },
+      { file:'areas.txt', key:'areas', label:'Areas' },
+      { file:'attributions.txt', key:'attributions', label:'Attributions' },
+      { file:'booking_rules.txt', key:'booking_rules', label:'Booking Rules' },
       { file:'calendar.txt', key:'calendar', label:'Calendar' },
-      { file:'calendar_dates.txt', key:'calendar_dates', label:'Calendar dates' },
-      { file:'fare_attributes.txt', key:'fare_attributes', label:'Fare attributes' },
-      { file:'fare_rules.txt', key:'fare_rules', label:'Fare rules' },
+      { file:'calendar_dates.txt', key:'calendar_dates', label:'Calendar Dates' },
+      { file:'fare_attributes.txt', key:'fare_attributes', label:'Fare Attributes' },
+      { file:'fare_leg_join_rules.txt', key:'fare_leg_join_rules', label:'Fare Leg Join Rules' },
+      { file:'fare_leg_rules.txt', key:'fare_leg_rules', label:'Fare Leg Rules' },
+      { file:'fare_media.txt', key:'fare_media', label:'Fare Media' },
+      { file:'fare_products.txt', key:'fare_products', label:'Fare Products' },
+      { file:'fare_rules.txt', key:'fare_rules', label:'Fare Rules' },
+      { file:'fare_transfer_rules.txt', key:'fare_transfer_rules', label:'Fare Transfer Rules' },
+      { file:'feed_info.txt', key:'feed_info', label:'Feed Info' },
       { file:'frequencies.txt', key:'frequencies', label:'Frequencies' },
+      { file:'levels.txt', key:'levels', label:'Levels' },
+      { file:'location_group_stops.txt', key:'location_group_stops', label:'Location Group Stops' },
+      { file:'location_groups.txt', key:'location_groups', label:'Location Groups' },
+      { file:'locations.geojson.txt', key:'locations.geojson', label:'Locations.Geojson' },
+      { file:'networks.txt', key:'networks', label:'Networks' },
+      { file:'pathways.txt', key:'pathways', label:'Pathways' },
+      { file:'rider_categories.txt', key:'rider_categories', label:'Rider Categories' },
+      { file:'route_networks.txt', key:'route_networks', label:'Route Networks' },
       { file:'routes.txt', key:'routes', label:'Routes' },
       { file:'shapes.txt', key:'shapes', label:'Shapes' },
-      { file:'stop_times.txt', key:'stop_times', label:'Stop times' },
+      { file:'stop_areas.txt', key:'stop_areas', label:'Stop Areas' },
+      { file:'stop_times.txt', key:'stop_times', label:'Stop Times' },
       { file:'stops.txt', key:'stops', label:'Stops' },
+      { file:'timeframes.txt', key:'timeframes', label:'Timeframes' },
       { file:'transfers.txt', key:'transfers', label:'Transfers' },
+      { file:'translations.txt', key:'translations', label:'Translations' },
       { file:'trips.txt', key:'trips', label:'Trips' }
     ];
 
