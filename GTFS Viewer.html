@@ -88,20 +88,17 @@
   <main class="container">
     <section id="home" class="content active">
       <div class="card">
-        <h2 style="margin-top:0">Home</h2>
         <p>Import <strong>GTFS files</strong> and visualize its data.<br />The <strong>Simple trip table</strong> appears next to Home only when <span class="kbd">trips.txt</span>, <span class="kbd">stop_times.txt</span>, and <span class="kbd">routes.txt</span> are loaded.
         <div class="file-box" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
           <label for="fileInput">Select GTFS files (.txt, .csv, .zip)</label>
           <input id="fileInput" type="file" accept=".txt,.csv,.zip" multiple />
           <div class="file-trigger">
             <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
+            <button class="btn primary" id="importBtn">Import</button>
+            <button class="btn" id="clearBtn" title="Clear tables & start over">Clear</button>
             <span class="hint">You can also drag & drop files anywhere in this panel.</span>
           </div>
           <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Frequencies, Routes, Shapes, Stop times, Stops, Transfers, Trips, and Simple trip table (derived). URLs become clickable; color fields render as swatches.</div>
-          <div class="actions">
-            <button class="btn primary" id="importBtn">Import</button>
-            <button class="btn" id="clearBtn" title="Clear tables & start over">Clear</button>
-          </div>
           <div id="selectedFiles"></div>
           <div id="failedFiles" class="fail-box" hidden>
             <h3>Failed to upload</h3>
@@ -623,6 +620,5 @@
 </body>
 
 </html>
-
 
 
