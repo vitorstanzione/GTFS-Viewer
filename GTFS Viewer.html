@@ -108,6 +108,7 @@
           </div>
           <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Frequencies, Routes, Shapes, Stop times, Stops, Transfers, Trips, and OD time table (derived). URLs become clickable; color fields render as swatches.</div>
           <div id="selectedFiles"></div>
+          <div id="importStatus" class="pill" hidden aria-live="polite"></div>
           <div id="failedFiles" class="fail-box" hidden>
             <h3>Failed to upload</h3>
             <ul id="failedFilesList"></ul>
@@ -187,6 +188,7 @@
     const simpleEl = document.getElementById('tab-simple');
     const validationCard = document.getElementById('validationCard');
     const validationTableBody = document.getElementById('validationTableBody');
+    const importStatusEl = document.getElementById('importStatus');
 
     const FILE_DEFS = [
       { file:'agency.txt', key:'agency', label:'Agency' },
@@ -255,12 +257,18 @@
     const selectedFilesEl = document.getElementById('selectedFiles');
     const failedFilesEl = document.getElementById('failedFiles');
     const failedFilesList = document.getElementById('failedFilesList');
+    const originalImportBtnText = importBtn?.textContent || 'Import';
 
     const loadedFileNames = new Set();
     let stagedFiles = [];
     let parsedData = {};
     let failedImports = [];
     let lastLoadedKey = null;
+    let importInProgress = false;
+    let importStatusHideTimer = null;
+    let parserWorker = null;
+
+    initParserWorker();
 
     // ===== Tabs =====
     function createTabButton(def, activeId) {
@@ -342,17 +350,41 @@
     });
 
     // ===== File handling =====
-    function handleDrop(ev) { ev.preventDefault(); stagedFiles = Array.from(ev.dataTransfer.files||[]); renderSelectedFiles(); }
-    if (chooseBtn) chooseBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', () => { stagedFiles = Array.from(fileInput.files||[]); renderSelectedFiles(); });
-    importBtn.addEventListener('click', async () => { if (!stagedFiles.length) { alert('Please select GTFS files to import.'); return; } await importSelectedFiles(stagedFiles); });
+    function handleDrop(ev) {
+      if (importInProgress) return;
+      ev.preventDefault();
+      stagedFiles = Array.from(ev.dataTransfer.files || []);
+      renderSelectedFiles();
+    }
+    if (chooseBtn) chooseBtn.addEventListener('click', () => {
+      if (importInProgress) return;
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', () => {
+      if (importInProgress) return;
+      stagedFiles = Array.from(fileInput.files || []);
+      renderSelectedFiles();
+    });
+    importBtn.addEventListener('click', async () => {
+      if (importInProgress) {
+        alert('An import is already in progress.');
+        return;
+      }
+      if (!stagedFiles.length) {
+        alert('Please select GTFS files to import.');
+        return;
+      }
+      await importSelectedFiles(stagedFiles);
+    });
     clearBtn.addEventListener('click', () => {
+      if (importInProgress) return;
       stagedFiles=[]; fileInput.value=''; selectedFilesEl.innerHTML='';
       Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; });
       if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
       parsedData={}; failedImports=[]; lastLoadedKey=null; loadedFileNames.clear();
       renderFailedFiles(failedImports);
       updateValidationReport();
+      updateImportStatus('');
       showContent('home');
     });
 
@@ -525,57 +557,90 @@
     }
 
     async function importSelectedFiles(files){
-      const pending = [];
-      const failed = [];
-      for (const file of files){
-        const lower = file.name.toLowerCase();
-        if (lower.endsWith('.zip')) {
-          try {
-            const entries = await extractFilesFromZip(file);
-            pending.push(...entries);
-          } catch (err) {
-            console.error('Failed to read ZIP', file.name, err);
-            alert(`Unable to read ZIP file: ${file.name}`);
-            failed.push({ name:file.name, reason:'Unable to read ZIP archive' });
+      if (importInProgress) return;
+      const payload = Array.isArray(files) ? files.slice() : Array.from(files || []);
+      setImportInProgress(true);
+      updateImportStatus('Preparing import...');
+      try {
+        if (!parserWorker) {
+          initParserWorker();
+        }
+        parserWorker.postMessage({ type:'import', files: payload });
+      } catch (err) {
+        console.error('Failed to start import', err);
+        handleWorkerError('Unable to start import');
+      }
+    }
+
+    function setImportInProgress(flag){
+      importInProgress = flag;
+      if (importBtn){
+        importBtn.disabled = flag;
+        importBtn.textContent = flag ? 'Importing…' : originalImportBtnText;
+      }
+      if (chooseBtn) chooseBtn.disabled = flag;
+      if (clearBtn) clearBtn.disabled = flag;
+    }
+
+    function handleWorkerMessage(event){
+      const data = event.data || {};
+      if (data.type === 'progress'){
+        const processed = Number.isFinite(data.processed) ? data.processed : 0;
+        const total = Number.isFinite(data.total) ? data.total : 0;
+        const message = data.message ? String(data.message) : '';
+        const current = data.current ? String(data.current) : '';
+        const parts = [];
+        if (message) parts.push(message);
+        if (total > 0){
+          parts.push(`${Math.min(processed, total)}/${total}`);
+        } else if (processed > 0){
+          parts.push(String(processed));
+        }
+        if (current) parts.push(current);
+        updateImportStatus(parts.join(' • '));
+      } else if (data.type === 'complete'){
+        handleImportComplete(data);
+      } else if (data.type === 'error'){
+        console.error('Worker reported error', data.message);
+        handleWorkerError(data.message || 'Worker error');
+      }
+    }
+
+    function handleImportComplete(data){
+      const results = Array.isArray(data.results) ? data.results : [];
+      const failed = Array.isArray(data.failed) ? data.failed : [];
+      const aggregatedFailed = [...failed];
+      let lastImportedKey = null;
+
+      for (const entry of results){
+        if (!entry) continue;
+        const lowerName = entry.lowerName || String(entry.name || '').toLowerCase();
+        const def = lowerName ? FILES_BY_NAME[lowerName] : null;
+        if (def && containers[def.key]) {
+          if (entry.parsed && Array.isArray(entry.parsed.headers) && Array.isArray(entry.parsed.rows)){
+            parsedData[def.key] = entry.parsed;
+            renderDataTable(containers[def.key], entry.parsed.headers, entry.parsed.rows, def.label);
+            containers[def.key].dataset.loaded='true';
+            registerLoadedFile(def, entry.name || lowerName);
+            lastImportedKey = def.key;
+          } else {
+            const reason = entry.sourceZip ? `No data parsed (from ${entry.sourceZip})` : 'No data parsed';
+            aggregatedFailed.push({ name: entry.name || def.file, reason });
           }
         } else {
-          try {
-            const parsed = await readAndParseFile(file);
-            pending.push({ name:file.name, lowerName:lower, parsed });
-          } catch (err) {
-            console.error('Failed to read file', file.name, err);
-            failed.push({ name:file.name, reason:'Unable to read file' });
-          }
+          const reason = entry.sourceZip ? `Unsupported file (from ${entry.sourceZip})` : 'Unsupported file';
+          aggregatedFailed.push({ name: entry.name || 'Unknown file', reason });
         }
       }
 
-      let lastImportedKey = null;
-      for (const entry of pending){
-        const name = entry.lowerName;
-        let consumed=false;
-        const def = FILES_BY_NAME[name];
-        if (def && containers[def.key]) {
-          const parsed = entry.parsed ?? parseCSV(entry.text);
-          if (!entry.parsed) {
-            entry.parsed = parsed;
-          }
-          parsedData[def.key] = parsed;
-          renderDataTable(containers[def.key], parsed.headers, parsed.rows, def.label);
-          containers[def.key].dataset.loaded='true';
-          registerLoadedFile(def, entry.lowerName);
-          lastImportedKey = def.key;
-          consumed=true;
-        } else {
-          console.warn('Ignoring file:', entry.name);
-        }
-        if (!consumed){ failed.push({ name:entry.name, reason:'Unsupported file' }); }
-      }
-      if (lastImportedKey) {
+      if (lastImportedKey){
         lastLoadedKey = lastImportedKey;
       }
-      failedImports = failed;
+
+      failedImports = aggregatedFailed;
       renderFailedFiles(failedImports);
       updateValidationReport();
+
       const simpleReady = SIMPLE_REQUIRED.every(key => containers[key]?.dataset.loaded==='true');
       if (simpleReady) {
         buildAndRenderSimpleTable();
@@ -588,130 +653,255 @@
           showContent('home');
         }
       }
+
+      setImportInProgress(false);
+      updateImportStatus('Import complete', { autoHide: 2000 });
     }
 
-    async function readAndParseFile(file){
+    function handleWorkerError(detail){
+      console.error('Import worker error:', detail);
+      setImportInProgress(false);
+      updateImportStatus('Import failed', { autoHide: 4000 });
+      initParserWorker();
+      alert('Import failed. Please check the console for more details.');
+    }
+
+    function updateImportStatus(text, options = {}){
+      if (!importStatusEl) return;
+      clearTimeout(importStatusHideTimer);
+      if (!text){
+        importStatusEl.hidden = true;
+        importStatusEl.textContent = '';
+        return;
+      }
+      importStatusEl.hidden = false;
+      importStatusEl.textContent = text;
+      if (options.autoHide){
+        importStatusHideTimer = setTimeout(() => {
+          importStatusEl.hidden = true;
+          importStatusEl.textContent = '';
+        }, options.autoHide);
+      }
+    }
+
+    function initParserWorker(){
+      if (parserWorker){
+        parserWorker.terminate();
+      }
+      parserWorker = createParserWorker();
+      parserWorker.addEventListener('message', handleWorkerMessage);
+      parserWorker.addEventListener('error', event => {
+        console.error('Parser worker error', event);
+        handleWorkerError('Worker error encountered');
+      });
+    }
+
+    function createParserWorker(){
+      const workerSource = String.raw`
+self.importScripts('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+
+function createIncrementalCSVParser(){
+  const rows=[];
+  let row=[];
+  let cur='';
+  let inQ=false;
+  let awaitingSecondQuote=false;
+  let skipNextLF=false;
+  return {
+    processChunk(chunk){
+      if (!chunk) return;
+      let i=0;
+      while (i<chunk.length){
+        let ch=chunk[i];
+        if (skipNextLF){
+          skipNextLF=false;
+          if (ch=='\n'){ i++; continue; }
+        }
+        if (awaitingSecondQuote){
+          if (ch=='"'){
+            cur+='"';
+            awaitingSecondQuote=false;
+            i++;
+            continue;
+          }
+          awaitingSecondQuote=false;
+          inQ=false;
+        }
+        if (ch=='\r'){
+          skipNextLF=true;
+          ch='\n';
+        }
+        if (ch=='"'){
+          if (inQ){
+            if (i+1<chunk.length){
+              if (chunk[i+1]=='"'){
+                cur+='"';
+                i+=2;
+                continue;
+              }
+              inQ=false;
+              i++;
+              continue;
+            }
+            awaitingSecondQuote=true;
+            i++;
+            continue;
+          }
+          inQ=true;
+          i++;
+          continue;
+        }
+        if (ch==',' && !inQ){
+          row.push(cur);
+          cur='';
+          i++;
+          continue;
+        }
+        if (ch=='\n' && !inQ){
+          row.push(cur);
+          cur='';
+          if (row.length && !(row.length===1 && row[0]==='')) rows.push(row);
+          row=[];
+          i++;
+          continue;
+        }
+        cur+=ch;
+        i++;
+      }
+    },
+    finish(){
+      if (awaitingSecondQuote){
+        awaitingSecondQuote=false;
+        inQ=false;
+      }
+      if (cur.length || row.length){
+        row.push(cur);
+        rows.push(row);
+      }
+      if (!rows.length) return { headers:[], rows:[] };
+      const headers = rows.shift();
+      const norm = rows.map(r => r.length<headers.length ? r.concat(Array(headers.length-r.length).fill('')) : r);
+      return { headers, rows:norm };
+    }
+  };
+}
+
+function parseCSVText(text){
+  const parser = createIncrementalCSVParser();
+  parser.processChunk(text);
+  return parser.finish();
+}
+
+async function parseBlobToTable(blob){
+  if (blob && blob.stream && typeof TextDecoderStream === 'function'){
+    try {
       const parser = createIncrementalCSVParser();
-      const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+      const reader = blob.stream().pipeThrough(new TextDecoderStream()).getReader();
       try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) parser.processChunk(value);
+        while (true){
+          const result = await reader.read();
+          if (result.done) break;
+          if (result.value) parser.processChunk(result.value);
         }
       } finally {
         reader.releaseLock();
       }
       return parser.finish();
+    } catch (err){
+      // Fallback handled below
     }
-    function readFileAsArrayBuffer(file){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsArrayBuffer(file); }); }
+  }
+  const text = await blob.text();
+  return parseCSVText(text);
+}
 
-    async function extractFilesFromZip(file){
-      const buffer = await readFileAsArrayBuffer(file);
-      const zip = await JSZip.loadAsync(buffer);
-      const tasks = [];
-      let order = 0;
-      zip.forEach((relativePath, entry) => {
-        if (entry.dir) return;
-        const baseName = relativePath.split('/').pop();
-        if (!baseName) return;
-        const lowerName = baseName.toLowerCase();
-        if (!lowerName.endsWith('.txt') && !lowerName.endsWith('.csv')) return;
-        const currentOrder = order++;
-        tasks.push(entry.async('string').then(text => ({ order:currentOrder, name:baseName, lowerName, text })));
-      });
-      const resolved = await Promise.all(tasks);
-      return resolved.sort((a,b)=>a.order-b.order).map(({ order, ...rest }) => rest);
+function buildProgressPayload(processed, total, current, message){
+  return { type:'progress', processed, total, current, message };
+}
+
+async function handleImport(files){
+  const results = [];
+  const failed = [];
+  const tasks = [];
+  let total = 0;
+
+  for (const file of files){
+    const name = file && file.name ? String(file.name) : 'file';
+    const lowerName = name.toLowerCase();
+    if (lowerName.endsWith('.zip')){
+      try {
+        const buffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(buffer);
+        const entries = [];
+        let order = 0;
+        zip.forEach(function(relativePath, entry){
+          if (entry.dir) return;
+          const baseName = relativePath.split('/').pop();
+          if (!baseName) return;
+          const lower = baseName.toLowerCase();
+          if (!lower.endsWith('.txt') && !lower.endsWith('.csv')) return;
+          entries.push({ order: order++, entry: entry, name: baseName, lowerName: lower });
+        });
+        entries.sort(function(a,b){ return a.order - b.order; });
+        total += entries.length;
+        tasks.push({ type:'zip', entries: entries, zipName: name });
+      } catch (err){
+        failed.push({ name: name, reason: 'Unable to read ZIP archive' });
+      }
+    } else {
+      total += 1;
+      tasks.push({ type:'file', file: file, name: name, lowerName: lowerName });
     }
+  }
 
-    // ===== CSV parser (handles quotes, escaped quotes, CRLF) =====
-    function createIncrementalCSVParser(){
-      const rows=[];
-      let row=[];
-      let cur='';
-      let inQ=false;
-      let awaitingSecondQuote=false;
-      let skipNextLF=false;
-      return {
-        processChunk(chunk){
-          if (!chunk) return;
-          let i=0;
-          while (i<chunk.length){
-            let ch=chunk[i];
-            if (skipNextLF){
-              skipNextLF=false;
-              if (ch==='\n'){ i++; continue; }
-            }
-            if (awaitingSecondQuote){
-              if (ch==='"'){
-                cur+='"';
-                awaitingSecondQuote=false;
-                i++;
-                continue;
-              }
-              awaitingSecondQuote=false;
-              inQ=false;
-            }
-            if (ch==='\r'){
-              skipNextLF=true;
-              ch='\n';
-            }
-            if (ch==='"'){
-              if (inQ){
-                if (i+1<chunk.length){
-                  if (chunk[i+1]==='"'){
-                    cur+='"';
-                    i+=2;
-                    continue;
-                  }
-                  inQ=false;
-                  i++;
-                  continue;
-                }
-                awaitingSecondQuote=true;
-                i++;
-                continue;
-              }
-              inQ=true;
-              i++;
-              continue;
-            }
-            if (ch===',' && !inQ){
-              row.push(cur);
-              cur='';
-              i++;
-              continue;
-            }
-            if (ch==='\n' && !inQ){
-              row.push(cur);
-              cur='';
-              if (row.length && !(row.length===1 && row[0]==='')) rows.push(row);
-              row=[];
-              i++;
-              continue;
-            }
-            cur+=ch;
-            i++;
-          }
-        },
-        finish(){
-          if (awaitingSecondQuote){
-            awaitingSecondQuote=false;
-            inQ=false;
-          }
-          if (cur.length||row.length){ row.push(cur); rows.push(row); }
-          if (!rows.length) return { headers:[], rows:[] };
-          const headers=rows.shift();
-          const norm=rows.map(r=> r.length<headers.length ? [...r, ...Array(headers.length-r.length).fill('')] : r);
-          return { headers, rows:norm };
+  let processed = 0;
+  self.postMessage(buildProgressPayload(processed, total, null, total ? 'Starting import' : 'No supported files'));
+
+  for (const task of tasks){
+    if (task.type === 'file'){
+      try {
+        const parsed = await parseBlobToTable(task.file);
+        results.push({ name: task.name, lowerName: task.lowerName, parsed: parsed });
+      } catch (err){
+        failed.push({ name: task.name, reason: 'Unable to read file' });
+      }
+      processed += 1;
+      self.postMessage(buildProgressPayload(processed, total, task.name, 'Processed file'));
+    } else if (task.type === 'zip'){
+      for (const entryInfo of task.entries){
+        try {
+          const text = await entryInfo.entry.async('string');
+          const parsed = parseCSVText(text);
+          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed: parsed, sourceZip: task.zipName });
+        } catch (err){
+          const failReason = task.zipName ? 'Unable to read file from ' + task.zipName : 'Unable to read file from ZIP';
+          failed.push({ name: entryInfo.name, reason: failReason });
         }
-      };
+        processed += 1;
+        const label = task.zipName ? 'Processed ZIP entry' : 'Processed file';
+        const info = task.zipName ? label + ' (' + task.zipName + ')' : label;
+        self.postMessage(buildProgressPayload(processed, total, entryInfo.name, info));
+      }
     }
+  }
 
-    function parseCSV(text){
-      const parser=createIncrementalCSVParser();
-      parser.processChunk(text);
-      return parser.finish();
+  self.postMessage({ type:'complete', results: results, failed: failed });
+}
+
+self.onmessage = function(event){
+  const data = event.data || {};
+  if (data.type === 'import'){
+    handleImport(Array.isArray(data.files) ? data.files : []).catch(function(err){
+      self.postMessage({ type:'error', message: err && err.message ? err.message : 'Unknown worker error' });
+    });
+  }
+};
+`;
+      const blob = new Blob([workerSource], { type:'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      const worker = new Worker(url);
+      URL.revokeObjectURL(url);
+      return worker;
     }
 
     // ===== Generic table with filters + pagination + rendering =====
