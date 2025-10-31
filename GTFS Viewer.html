@@ -68,7 +68,9 @@
     /* Color chips */
     .chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:#0f1520}
     .chip-swatch{width:14px;height:14px;border-radius:4px;border:1px solid #0003}
-    .validation-card{margin-top:20px}
+    .validation-card{margin-top:20px;display:inline-block;max-width:100%}
+    .validation-card .scroll{display:inline-block;max-width:100%}
+    .validation-card .validation-table{width:auto}
     .validation-table tbody td:nth-child(1),
     .validation-table tbody td:nth-child(2){font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
     .status-badge{display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:999px;font-weight:700;letter-spacing:.4px;color:#fff;min-width:90px;text-transform:uppercase}
@@ -641,18 +643,26 @@
       renderFailedFiles(failedImports);
       updateValidationReport();
 
+      const previouslyActiveId = document.querySelector('.content.active')?.id || 'home';
       const simpleReady = SIMPLE_REQUIRED.every(key => containers[key]?.dataset.loaded==='true');
       if (simpleReady) {
         buildAndRenderSimpleTable();
-        showContent('tab-simple');
-      } else {
-        const fallbackKey = lastImportedKey || lastLoadedKey;
-        if (fallbackKey) {
-          showContent(`tab-${fallbackKey}`);
-        } else {
-          showContent('home');
+      }
+
+      let targetId = previouslyActiveId === 'tab-simple' && !simpleReady
+        ? 'home'
+        : previouslyActiveId;
+      if (targetId !== 'home') {
+        const targetEl = document.getElementById(targetId);
+        const isSimpleTab = targetId === 'tab-simple';
+        const isLoaded = isSimpleTab
+          ? simpleEl?.dataset?.loaded === 'true'
+          : targetEl?.dataset?.loaded === 'true';
+        if (!isLoaded) {
+          targetId = 'home';
         }
       }
+      showContent(targetId);
 
       setImportInProgress(false);
       updateImportStatus('Import complete', { autoHide: 2000 });
