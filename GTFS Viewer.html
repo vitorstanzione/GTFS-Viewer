@@ -311,7 +311,7 @@
       aboutButton.type = 'button';
       aboutButton.className = 'tab-btn';
       aboutButton.textContent = 'About';
-      aboutButton.addEventListener('click', openAboutModal);
+      aboutButton.addEventListener('click', () => openAboutModal(aboutButton));
       aboutWrap.appendChild(aboutButton);
 
       headerRow.append(primaryRow, aboutWrap);
@@ -345,11 +345,89 @@
 
     const aboutModal = document.getElementById('aboutModal');
     const aboutClose = aboutModal?.querySelector('.modal-close');
+    const backgroundEls = Array.from(document.querySelectorAll('body > :not(#aboutModal)'))
+      .filter(el => el.tagName !== 'SCRIPT');
+    const focusableSelectors = [
+      'a[href]',
+      'button:not([disabled])',
+      'input:not([disabled]):not([type="hidden"])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(',');
+    let lastFocusedElement = null;
 
-    function openAboutModal(){ if (aboutModal){ aboutModal.hidden = false; aboutModal.focus(); } }
-    function closeAboutModal(){ if (aboutModal){ aboutModal.hidden = true; } }
+    function setBackgroundInert(state){
+      backgroundEls.forEach(el => {
+        if (state){
+          el.setAttribute('aria-hidden', 'true');
+          el.setAttribute('inert', '');
+        } else {
+          el.removeAttribute('aria-hidden');
+          el.removeAttribute('inert');
+        }
+      });
+    }
+
+    function getFocusableElements(container){
+      return Array.from(container.querySelectorAll(focusableSelectors))
+        .filter(el => el.offsetParent !== null || el === document.activeElement);
+    }
+
+    function openAboutModal(trigger){
+      if (!aboutModal) return;
+      const triggerElement = trigger instanceof HTMLElement ? trigger : document.activeElement;
+      if (triggerElement instanceof HTMLElement){
+        lastFocusedElement = triggerElement;
+      }
+      setBackgroundInert(true);
+      aboutModal.hidden = false;
+      const focusable = getFocusableElements(aboutModal);
+      if (focusable.length){
+        focusable[0].focus();
+      } else {
+        aboutModal.focus();
+      }
+    }
+    function closeAboutModal(){
+      if (!aboutModal) return;
+      aboutModal.hidden = true;
+      setBackgroundInert(false);
+      if (lastFocusedElement && typeof lastFocusedElement.focus === 'function'){
+        lastFocusedElement.focus();
+      }
+      lastFocusedElement = null;
+    }
+
+    function handleAboutModalKeydown(event){
+      if (!aboutModal || aboutModal.hidden) return;
+      if (event.key !== 'Tab') return;
+      const focusable = getFocusableElements(aboutModal);
+      if (!focusable.length){
+        event.preventDefault();
+        aboutModal.focus();
+        return;
+      }
+      const currentIndex = focusable.indexOf(document.activeElement);
+      if (event.shiftKey){
+        if (currentIndex <= 0){
+          event.preventDefault();
+          focusable[focusable.length - 1].focus();
+        }
+      } else {
+        if (currentIndex === focusable.length - 1){
+          event.preventDefault();
+          focusable[0].focus();
+        }
+      }
+      if (currentIndex === -1){
+        event.preventDefault();
+        (event.shiftKey ? focusable[focusable.length - 1] : focusable[0]).focus();
+      }
+    }
 
     aboutClose?.addEventListener('click', closeAboutModal);
+    aboutModal?.addEventListener('keydown', handleAboutModalKeydown);
     aboutModal?.addEventListener('click', event => {
       if (event.target === aboutModal) closeAboutModal();
     });
