@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GTFS Viewer — Trips, Stop Times & Routes</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#121821; --muted:#8fa3b8; --text:#e7edf3; --border:#1f2937; }
+    *{box-sizing:border-box}
+    body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;background:radial-gradient(1200px 1200px at 10% -10%,rgba(77,163,255,.08),transparent),radial-gradient(1000px 800px at 110% 10%,rgba(34,211,238,.08),transparent),var(--bg);color:var(--text);min-height:100vh}
+    header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+    header h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .tab-btn{appearance:none;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;transition:.15s ease;font-weight:600}
+    .tab-btn.active{background:linear-gradient(135deg,rgba(77,163,255,.12),rgba(34,211,238,.12));color:#e7edf3;border-color:#2a3a4d}
+    .container{padding:20px 24px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0));border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+    .file-box{display:grid;gap:14px}
+    label{color:var(--muted);font-weight:600}
+    input[type=file]{width:100%;padding:14px;background:#0f1520;color:var(--text);border:1px dashed #2a3a4d;border-radius:12px}
+    .hint{color:var(--muted);font-size:12px}
+    .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#0f1520;color:var(--text);cursor:pointer}
+    .btn.primary{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(34,211,238,.14))}
+    .content{display:none}
+    .content.active{display:block}
+    table{border-collapse:collapse;width:100%;white-space:nowrap}
+    thead th{position:sticky;top:0;background:#0f1520}
+    th,td{border-bottom:1px solid #1c2430;padding:8px 10px;text-align:left}
+    tbody tr:hover{background:rgba(255,255,255,0.03)}
+    .scroll{overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:12px;background:#0f1520}
+    .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;background:#0f1520;border:1px solid var(--border);color:#8fa3b8;font-size:12px}
+    .file-pill{margin-top:6px}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:#c7d2fe}
+    /* Filters & pagination */
+    .filters th{background:#0b1420;position:sticky;top:32px;z-index:1}
+    .filter-input{width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:#0f1520;color:var(--text);font-size:12px}
+    .filter-input::placeholder{color:#6b7b8f}
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .spacer{flex:1}
+    .pagination{display:flex;align-items:center;gap:6px}
+    .pagination .btn{padding:6px 10px}
+    .select{padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:#0f1520;color:var(--text)}
+    /* Color chips */
+    .chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:#0f1520}
+    .chip-swatch{width:14px;height:14px;border-radius:4px;border:1px solid #0003}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GTFS Viewer — Trips, Stop Times & Routes</h1>
+    <div class="tabs" id="tabs"></div>
+  </header>
+
+  <main class="container">
+    <section id="home" class="content active">
+      <div class="card">
+        <h2 style="margin-top:0">Home</h2>
+        <p>Import <span class="kbd">trips.txt</span>, <span class="kbd">stop_times.txt</span>, and <span class="kbd">routes.txt</span>. The <strong>Simple trip table</strong> appears next to Home only when <em>all three</em> are loaded. The Sign column uses <code>route_short_name</code> from <code>routes.txt</code>.</p>
+        <div class="file-box" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+          <label for="fileInput">Select GTFS files (.txt, .csv)</label>
+          <input id="fileInput" type="file" accept=".txt,.csv" multiple />
+          <div class="hint">Drag & drop is supported. Tabs: Trips, Stop times, Routes, and Simple trip table (derived). URLs become clickable; color fields render as swatches.</div>
+          <div class="actions">
+            <button class="btn primary" id="importBtn">Import</button>
+            <button class="btn" id="clearBtn" title="Clear tables & start over">Clear</button>
+          </div>
+          <div id="selectedFiles"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-simple" class="content"></section>
+    <section id="tab-trips" class="content"></section>
+    <section id="tab-stop_times" class="content"></section>
+    <section id="tab-routes" class="content"></section>
+  </main>
+
+  <script>
+    // ===== Elements & state =====
+    const tabsEl = document.getElementById('tabs');
+    const tripsEl = document.getElementById('tab-trips');
+    const stopTimesEl = document.getElementById('tab-stop_times');
+    const routesEl = document.getElementById('tab-routes');
+    const simpleEl = document.getElementById('tab-simple');
+
+    const fileInput = document.getElementById('fileInput');
+    const importBtn = document.getElementById('importBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const selectedFilesEl = document.getElementById('selectedFiles');
+
+    // No filenames in tabs
+    const FRIENDLY = { home:'Home', simple:'Simple trip table', trips:'Trips', stop_times:'Stop times', routes:'Routes' };
+
+    let stagedFiles = [];
+    let parsedTrips = null;     // { headers, rows }
+    let parsedStopTimes = null; // { headers, rows }
+    let parsedRoutes = null;    // { headers, rows }
+
+    // ===== Tabs =====
+    function setTabs(activeId) {
+      tabsEl.innerHTML = '';
+      const defs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
+      // Simple appears next to Home only when all three are loaded
+      if (tripsEl.dataset.loaded==='true' && stopTimesEl.dataset.loaded==='true' && routesEl.dataset.loaded==='true') {
+        defs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
+      }
+      if (tripsEl.dataset.loaded==='true') defs.push({ id:'trips', label:FRIENDLY.trips, target:'tab-trips' });
+      if (stopTimesEl.dataset.loaded==='true') defs.push({ id:'stop_times', label:FRIENDLY.stop_times, target:'tab-stop_times' });
+      if (routesEl.dataset.loaded==='true') defs.push({ id:'routes', label:FRIENDLY.routes, target:'tab-routes' });
+
+      defs.forEach(def => {
+        const b = document.createElement('button');
+        b.className = 'tab-btn' + (def.target === activeId ? ' active' : '');
+        b.textContent = def.label;
+        b.addEventListener('click', () => showContent(def.target));
+        tabsEl.appendChild(b);
+      });
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        const t = btn.textContent;
+        const isActive = (t===FRIENDLY.home && activeId==='home')
+          || (t===FRIENDLY.simple && activeId==='tab-simple')
+          || (t===FRIENDLY.trips && activeId==='tab-trips')
+          || (t===FRIENDLY.stop_times && activeId==='tab-stop_times')
+          || (t===FRIENDLY.routes && activeId==='tab-routes');
+        btn.classList.toggle('active', isActive);
+      });
+    }
+
+    function showContent(id) {
+      document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+      const el = document.getElementById(id);
+      if (el) el.classList.add('active');
+      setTabs(id);
+    }
+
+    // ===== File handling =====
+    function handleDrop(ev) { ev.preventDefault(); stagedFiles = Array.from(ev.dataTransfer.files||[]); renderSelectedFiles(); }
+    fileInput.addEventListener('change', () => { stagedFiles = Array.from(fileInput.files||[]); renderSelectedFiles(); });
+    importBtn.addEventListener('click', async () => { if (!stagedFiles.length) { alert('Please select trips.txt, stop_times.txt and/or routes.txt'); return; } await importSelectedFiles(stagedFiles); });
+    clearBtn.addEventListener('click', () => {
+      stagedFiles=[]; fileInput.value=''; selectedFilesEl.innerHTML='';
+      [tripsEl, stopTimesEl, routesEl, simpleEl].forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; });
+      parsedTrips=parsedStopTimes=parsedRoutes=null; showContent('home');
+    });
+
+    function renderSelectedFiles(){ if (!stagedFiles.length){ selectedFilesEl.innerHTML=''; return;} selectedFilesEl.innerHTML = stagedFiles.map(f=>`<span class="pill file-pill">${f.name}<span style="opacity:.6">${formatSize(f.size)}</span></span>`).join(' '); }
+    function formatSize(bytes){ if(bytes<1024)return `${bytes} B`; const kb=bytes/1024; if(kb<1024)return `${kb.toFixed(1)} KB`; const mb=kb/1024; return `${mb.toFixed(2)} MB`; }
+
+    async function importSelectedFiles(files){
+      for (const file of files){
+        const name = file.name.toLowerCase();
+        if (name==='trips.txt') {
+          const txt = await readFile(file); parsedTrips = parseCSV(txt); renderDataTable(tripsEl, parsedTrips.headers, parsedTrips.rows, FRIENDLY.trips); tripsEl.dataset.loaded='true';
+        } else if (name==='stop_times.txt') {
+          const txt = await readFile(file); parsedStopTimes = parseCSV(txt); renderDataTable(stopTimesEl, parsedStopTimes.headers, parsedStopTimes.rows, FRIENDLY.stop_times); stopTimesEl.dataset.loaded='true';
+        } else if (name==='routes.txt') {
+          const txt = await readFile(file); parsedRoutes = parseCSV(txt); renderDataTable(routesEl, parsedRoutes.headers, parsedRoutes.rows, FRIENDLY.routes); routesEl.dataset.loaded='true';
+        } else {
+          console.warn('Ignoring file:', file.name);
+        }
+      }
+      // Build simple table only when all three are present
+      if (tripsEl.dataset.loaded==='true' && stopTimesEl.dataset.loaded==='true' && routesEl.dataset.loaded==='true') {
+        buildAndRenderSimpleTable();
+        showContent('tab-simple');
+      } else {
+        const active = tripsEl.dataset.loaded==='true' ? 'tab-trips' : (stopTimesEl.dataset.loaded==='true' ? 'tab-stop_times' : (routesEl.dataset.loaded==='true' ? 'tab-routes' : 'home'));
+        showContent(active);
+      }
+    }
+
+    function readFile(file){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsText(file); }); }
+
+    // ===== CSV parser (handles quotes, escaped quotes, CRLF) =====
+    function parseCSV(text){
+      text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+      const rows=[]; let cur=''; let inQ=false; let row=[];
+      for (let i=0;i<text.length;i++){
+        const ch=text[i];
+        if (ch==='"') { if(inQ && text[i+1]==='"'){ cur+='"'; i++; continue; } inQ=!inQ; continue; }
+        if (ch===',' && !inQ){ row.push(cur); cur=''; continue; }
+        if (ch==='\n' && !inQ){ row.push(cur); cur=''; if(row.length && !(row.length===1 && row[0]==='')) rows.push(row); row=[]; continue; }
+        cur+=ch;
+      }
+      if (cur.length||row.length){ row.push(cur); rows.push(row); }
+      if (!rows.length) return { headers:[], rows:[] };
+      const headers=rows.shift();
+      const norm=rows.map(r=> r.length<headers.length ? [...r, ...Array(headers.length-r.length).fill('')] : r);
+      return { headers, rows:norm };
+    }
+
+    // ===== Generic table with filters + pagination + rendering =====
+    function createState(headers, rows){ return { headers, rows, filters: headers.map(()=>''), page:1, pageSize:50 }; }
+    function applyFilters(rows, headers, filters){ const f=filters.map(v=>{v=(v||'').trim(); return !v?{m:'none'}:v.startsWith('=')?{m:'eq',v:v.slice(1).toLowerCase()}:{m:'in',v:v.toLowerCase()};}); return rows.filter(r=>r.every((c,i)=>{const fl=f[i]; if(fl.m==='none')return true; const s=String(c||'').toLowerCase(); return fl.m==='eq'? s===fl.v : s.includes(fl.v);})); }
+    function paginate(rows,page,pageSize){ const total=rows.length; const pages=Math.max(1,Math.ceil(total/pageSize)); const p=Math.min(Math.max(1,page),pages); const start=(p-1)*pageSize; return { pageRows: rows.slice(start,start+pageSize), page:p, pages, total }; }
+    function mkBtn(t){ const b=document.createElement('button'); b.className='btn'; b.type='button'; b.textContent=t; return b; }
+    function isValidHex6(v){ return /^[#]?[0-9a-fA-F]{6}$/.test(String(v||'')); }
+    function normalizeHex(v){ v=String(v||'').trim(); return v? (v.startsWith('#')? v : '#'+v) : ''; }
+
+    function renderDataTable(container, headers, rows, title){
+      container.innerHTML=''; const state=createState(headers,rows); container.__state=state;
+      const card=document.createElement('div'); card.className='card';
+      const headerBar=document.createElement('div'); headerBar.className='toolbar';
+      const titleEl=document.createElement('h2'); titleEl.style.margin='0'; titleEl.textContent=title;
+      const countEl=document.createElement('span'); countEl.className='pill'; countEl.textContent=`${rows.length.toLocaleString()} rows`;
+      const spacer=document.createElement('div'); spacer.className='spacer';
+      const pageSizeSel=document.createElement('select'); pageSizeSel.className='select'; [25,50,100,250,1000].forEach(n=>{const o=document.createElement('option'); o.value=String(n); o.textContent=`${n}/page`; pageSizeSel.appendChild(o);}); pageSizeSel.value=String(state.pageSize);
+      const pager=document.createElement('div'); pager.className='pagination';
+      const btnFirst=mkBtn('⏮'), btnPrev=mkBtn('◀'), pageInfo=document.createElement('span'), btnNext=mkBtn('▶'), btnLast=mkBtn('⏭'); pageInfo.className='pill';
+      pager.append(btnFirst,btnPrev,pageInfo,btnNext,btnLast);
+      headerBar.append(titleEl,countEl,spacer,pageSizeSel,pager);
+      const scroller=document.createElement('div'); scroller.className='scroll';
+      const table=document.createElement('table');
+      const thead=document.createElement('thead'); const trHead=document.createElement('tr'); headers.forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trHead.appendChild(th); }); thead.appendChild(trHead);
+      const trFilters=document.createElement('tr'); trFilters.className='filters'; headers.forEach((h,idx)=>{ const th=document.createElement('th'); const input=document.createElement('input'); input.className='filter-input'; input.type='text'; input.placeholder='Filter'; input.value=state.filters[idx]; input.addEventListener('input',()=>{ state.filters[idx]=input.value; state.page=1; draw(); }); th.appendChild(input); trFilters.appendChild(th); }); thead.appendChild(trFilters);
+      const tbody=document.createElement('tbody'); table.appendChild(thead); table.appendChild(tbody); scroller.appendChild(table); card.appendChild(headerBar); card.appendChild(scroller); container.appendChild(card);
+
+      function draw(){
+        const filtered=applyFilters(state.rows,state.headers,state.filters); const {pageRows,page,pages}=paginate(filtered,state.page,state.pageSize); state.page=page;
+        tbody.innerHTML=''; const frag=document.createDocumentFragment();
+        pageRows.forEach(r=>{ const tr=document.createElement('tr'); r.forEach((cell,idx)=>{ const td=document.createElement('td'); const header=state.headers[idx]||''; const val=String(cell||'');
+          if (/url/i.test(header) && /^https?:\/\//i.test(val)) { const a=document.createElement('a'); a.href=val; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; td.appendChild(a); }
+          else if (/color/i.test(header) && isValidHex6(val)) { const chip=document.createElement('span'); chip.className='chip'; const sw=document.createElement('span'); sw.className='chip-swatch'; sw.style.background=normalizeHex(val); const tx=document.createElement('span'); tx.textContent=val.replace(/^#/,'').toUpperCase(); if (/route_text_color/i.test(header)) tx.style.color=normalizeHex(val); chip.appendChild(sw); chip.appendChild(tx); td.appendChild(chip); }
+          else { td.textContent=val; if (/(?:_id$)|^(?:\d{1,2}:\d{2}:\d{2})$/.test(header)) td.style.fontFamily='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'; }
+          tr.appendChild(td); }); frag.appendChild(tr); });
+        tbody.appendChild(frag); pageInfo.textContent=`Page ${page} / ${pages}`; countEl.textContent=`${filtered.length.toLocaleString()} rows`;
+        btnFirst.disabled=page<=1; btnPrev.disabled=page<=1; btnNext.disabled=page>=pages; btnLast.disabled=page>=pages;
+      }
+      pageSizeSel.addEventListener('change',()=>{ state.pageSize=parseInt(pageSizeSel.value,10); state.page=1; draw(); });
+      btnFirst.addEventListener('click',()=>{ state.page=1; draw(); }); btnPrev.addEventListener('click',()=>{ state.page=Math.max(1,state.page-1); draw(); }); btnNext.addEventListener('click',()=>{ state.page=state.page+1; draw(); }); btnLast.addEventListener('click',()=>{ const filtered=applyFilters(state.rows,state.headers,state.filters); state.page=Math.max(1,Math.ceil(filtered.length/state.pageSize)); draw(); });
+      draw();
+    }
+
+    // ===== Simple Trip Table =====
+    function buildAndRenderSimpleTable(){
+      if (!parsedTrips || !parsedStopTimes || !parsedRoutes) return; // routes required
+      const tH = parsedTrips.headers, tR = parsedTrips.rows;
+      const sH = parsedStopTimes.headers, sR = parsedStopTimes.rows;
+      const rH = parsedRoutes.headers, rR = parsedRoutes.rows;
+
+      const IDX = {
+        trips: { route_id: tH.indexOf('route_id'), trip_id: tH.indexOf('trip_id') },
+        stop_times: { trip_id: sH.indexOf('trip_id'), arrival_time: sH.indexOf('arrival_time'), departure_time: sH.indexOf('departure_time'), stop_id: sH.indexOf('stop_id'), stop_sequence: sH.indexOf('stop_sequence') },
+        routes: { route_id: rH.indexOf('route_id'), route_short_name: rH.indexOf('route_short_name') }
+      };
+
+      // Build stop summaries per trip (origin/destination)
+      const byTrip = new Map();
+      for (const row of sR){
+        const tripId=row[IDX.stop_times.trip_id]; const seq=Number(row[IDX.stop_times.stop_sequence]||0);
+        const arr=row[IDX.stop_times.arrival_time]; const dep=row[IDX.stop_times.departure_time]; const stop=row[IDX.stop_times.stop_id];
+        if (!byTrip.has(tripId)) byTrip.set(tripId,{ minSeq:seq, maxSeq:seq, origin:{stop_id:stop, dep_time:dep}, dest:{stop_id:stop, arr_time:arr} });
+        const rec=byTrip.get(tripId);
+        if (seq<rec.minSeq){ rec.minSeq=seq; rec.origin={stop_id:stop, dep_time:dep}; }
+        if (seq>rec.maxSeq){ rec.maxSeq=seq; rec.dest={stop_id:stop, arr_time:arr}; }
+      }
+
+      // route_id => route_short_name map
+      const routeShort = new Map();
+      for (const rr of rR){ routeShort.set(rr[IDX.routes.route_id], rr[IDX.routes.route_short_name]||''); }
+
+      const simpleHeaders=['Trip ID','Route ID','Sign (route_short_name)','Origin Stop ID','Destination Stop ID','Departure Time','Arrival Time'];
+      const simpleRows=[];
+      for (const row of tR){
+        const routeId=row[IDX.trips.route_id]; const tripId=row[IDX.trips.trip_id];
+        const sign=routeShort.get(routeId)||''; const times=byTrip.get(tripId)||{origin:{stop_id:'',dep_time:''},dest:{stop_id:'',arr_time:''}};
+        simpleRows.push([tripId, routeId, sign, times.origin.stop_id||'', times.dest.stop_id||'', times.origin.dep_time||'', times.dest.arr_time||'']);
+      }
+      renderDataTable(simpleEl, simpleHeaders, simpleRows, FRIENDLY.simple);
+      simpleEl.dataset.loaded='true'; setTabs('tab-simple');
+    }
+
+    // ===== Init =====
+    setTabs('home');
+  </script>
+</body>
+</html>
