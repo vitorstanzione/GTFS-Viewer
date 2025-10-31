@@ -1,1 +1,56 @@
-# GTFS-Viewer
+# GTFS Viewer (Pure HTML)
+
+A lightweight, browser-only GTFS viewer that loads standard GTFS `.txt` files so you can visualize tables, filter, sort, and more — no server, no build step, just open the HTML file.
+
+> **Why?** Sometimes you just want to inspect GTFS feeds quickly without installing tooling or spinning up a backend.
+
+## Features
+- 🔍 View GTFS tables directly in your browser
+- 🔄 Client-side filtering, sorting, and (optionally) multi-column sort
+- 📁 Works with individual `.txt` files or a `.zip` of a GTFS feed
+- 📊 “Simple trip table” view (requires `routes.txt`, `trips.txt`, and `stop_times.txt`)
+- 🎨 Route/brand colors rendered from `route_color` / `route_text_color` when valid
+- 🔗 Clickable URLs where present (e.g., `route_url`, `agency_url`)
+- 💾 (Planned) Export current view to CSV / JSON / clipboard
+
+## What it loads
+At minimum, the app can show any GTFS table you provide. Some features need specific files:
+
+- **Core tables supported:** `agency.txt`, `stops.txt`, `routes.txt`, `trips.txt`, `stop_times.txt`, `calendar.txt`, `calendar_dates.txt`, `shapes.txt`, `feed_info.txt`, etc.
+- **Required for “Simple trip table”:** `routes.txt`, `trips.txt`, `stop_times.txt`
+  - The “Sign (route short name)” is taken from `route_short_name` in `routes.txt`.
+
+## Quick Start
+1. Clone or download this repository.
+2. Open `index.html` in your browser (double-click is fine).
+3. Drag & drop GTFS `.txt` files (or a `.zip` containing them) into the page.
+4. Start exploring.
+
+> Tip: If your browser blocks local file access for some features, serve the folder with a tiny static server (e.g., `python -m http.server 8000`) and open `http://localhost:8000`.
+
+## Usage Notes
+- You can load a full `.zip` feed or select individual `.txt` files.
+- Sorting: click a column header. (Planned) **Shift+Click** to add secondary sort.
+- Colors: if `route_color` / `route_text_color` are valid hex (e.g., `2c8976`), they’ll render.
+
+## Roadmap / Ideas
+- Multi-column sorting (Shift+Click)
+- Export current view (CSV, JSON, copy to clipboard)
+- Column show/hide and re-order
+- Persistent filters (saved in localStorage)
+- Basic charts (e.g., trips per route, stops per route)
+- Keyboard navigation and accessibility improvements
+- Very large feed optimization (virtualized tables)
+
+## Development
+- Pure front-end (HTML + JS + CSS). No build tools required.
+- Keep PRs small and focused. Add a short before/after note or a GIF if UI changes.
+
+## Contributing
+Issues and PRs are welcome! If you add a feature, please include:
+- A short description
+- Minimal test data or steps to reproduce
+- Any trade-offs or limitations
+
+## License
+This project is released under **The Unlicense** (public domain). See [`LICENSE`](./LICENSE) for details.
