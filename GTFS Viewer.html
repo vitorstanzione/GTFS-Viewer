@@ -540,8 +540,8 @@
           }
         } else {
           try {
-            const text = await readFile(file);
-            pending.push({ name:file.name, lowerName:lower, text });
+            const parsed = await readAndParseFile(file);
+            pending.push({ name:file.name, lowerName:lower, parsed });
           } catch (err) {
             console.error('Failed to read file', file.name, err);
             failed.push({ name:file.name, reason:'Unable to read file' });
@@ -555,7 +555,10 @@
         let consumed=false;
         const def = FILES_BY_NAME[name];
         if (def && containers[def.key]) {
-          const parsed = parseCSV(entry.text);
+          const parsed = entry.parsed ?? parseCSV(entry.text);
+          if (!entry.parsed) {
+            entry.parsed = parsed;
+          }
           parsedData[def.key] = parsed;
           renderDataTable(containers[def.key], parsed.headers, parsed.rows, def.label);
           containers[def.key].dataset.loaded='true';
@@ -587,7 +590,20 @@
       }
     }
 
-    function readFile(file){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsText(file); }); }
+    async function readAndParseFile(file){
+      const parser = createIncrementalCSVParser();
+      const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) parser.processChunk(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      return parser.finish();
+    }
     function readFileAsArrayBuffer(file){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsArrayBuffer(file); }); }
 
     async function extractFilesFromZip(file){
@@ -609,21 +625,93 @@
     }
 
     // ===== CSV parser (handles quotes, escaped quotes, CRLF) =====
+    function createIncrementalCSVParser(){
+      const rows=[];
+      let row=[];
+      let cur='';
+      let inQ=false;
+      let awaitingSecondQuote=false;
+      let skipNextLF=false;
+      return {
+        processChunk(chunk){
+          if (!chunk) return;
+          let i=0;
+          while (i<chunk.length){
+            let ch=chunk[i];
+            if (skipNextLF){
+              skipNextLF=false;
+              if (ch==='\n'){ i++; continue; }
+            }
+            if (awaitingSecondQuote){
+              if (ch==='"'){
+                cur+='"';
+                awaitingSecondQuote=false;
+                i++;
+                continue;
+              }
+              awaitingSecondQuote=false;
+              inQ=false;
+            }
+            if (ch==='\r'){
+              skipNextLF=true;
+              ch='\n';
+            }
+            if (ch==='"'){
+              if (inQ){
+                if (i+1<chunk.length){
+                  if (chunk[i+1]==='"'){
+                    cur+='"';
+                    i+=2;
+                    continue;
+                  }
+                  inQ=false;
+                  i++;
+                  continue;
+                }
+                awaitingSecondQuote=true;
+                i++;
+                continue;
+              }
+              inQ=true;
+              i++;
+              continue;
+            }
+            if (ch===',' && !inQ){
+              row.push(cur);
+              cur='';
+              i++;
+              continue;
+            }
+            if (ch==='\n' && !inQ){
+              row.push(cur);
+              cur='';
+              if (row.length && !(row.length===1 && row[0]==='')) rows.push(row);
+              row=[];
+              i++;
+              continue;
+            }
+            cur+=ch;
+            i++;
+          }
+        },
+        finish(){
+          if (awaitingSecondQuote){
+            awaitingSecondQuote=false;
+            inQ=false;
+          }
+          if (cur.length||row.length){ row.push(cur); rows.push(row); }
+          if (!rows.length) return { headers:[], rows:[] };
+          const headers=rows.shift();
+          const norm=rows.map(r=> r.length<headers.length ? [...r, ...Array(headers.length-r.length).fill('')] : r);
+          return { headers, rows:norm };
+        }
+      };
+    }
+
     function parseCSV(text){
-      text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
-      const rows=[]; let cur=''; let inQ=false; let row=[];
-      for (let i=0;i<text.length;i++){
-        const ch=text[i];
-        if (ch==='"') { if(inQ && text[i+1]==='"'){ cur+='"'; i++; continue; } inQ=!inQ; continue; }
-        if (ch===',' && !inQ){ row.push(cur); cur=''; continue; }
-        if (ch==='\n' && !inQ){ row.push(cur); cur=''; if(row.length && !(row.length===1 && row[0]==='')) rows.push(row); row=[]; continue; }
-        cur+=ch;
-      }
-      if (cur.length||row.length){ row.push(cur); rows.push(row); }
-      if (!rows.length) return { headers:[], rows:[] };
-      const headers=rows.shift();
-      const norm=rows.map(r=> r.length<headers.length ? [...r, ...Array(headers.length-r.length).fill('')] : r);
-      return { headers, rows:norm };
+      const parser=createIncrementalCSVParser();
+      parser.processChunk(text);
+      return parser.finish();
     }
 
     // ===== Generic table with filters + pagination + rendering =====
