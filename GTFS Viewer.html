@@ -85,7 +85,7 @@
             <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
             <span class="hint">You can also drag & drop files anywhere in this panel.</span>
           </div>
-          <div class="hint">GTFS ZIP bundles are supported. Tabs: Trips, Stop times, Routes, and Simple trip table (derived). URLs become clickable; color fields render as swatches.</div>
+          <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Routes, Shapes, Stop times, Stops, Transfers, Trips, and Simple trip table (derived). URLs become clickable; color fields render as swatches.</div>
           <div class="actions">
             <button class="btn primary" id="importBtn">Import</button>
             <button class="btn" id="clearBtn" title="Clear tables & start over">Clear</button>
@@ -100,19 +100,57 @@
     </section>
 
     <section id="tab-simple" class="content"></section>
-    <section id="tab-trips" class="content"></section>
-    <section id="tab-stop_times" class="content"></section>
+    <section id="tab-agency" class="content"></section>
+    <section id="tab-calendar" class="content"></section>
+    <section id="tab-calendar_dates" class="content"></section>
+    <section id="tab-fare_attributes" class="content"></section>
+    <section id="tab-fare_rules" class="content"></section>
     <section id="tab-routes" class="content"></section>
+    <section id="tab-shapes" class="content"></section>
+    <section id="tab-stop_times" class="content"></section>
+    <section id="tab-stops" class="content"></section>
+    <section id="tab-transfers" class="content"></section>
+    <section id="tab-trips" class="content"></section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     // ===== Elements & state =====
     const tabsEl = document.getElementById('tabs');
-    const tripsEl = document.getElementById('tab-trips');
-    const stopTimesEl = document.getElementById('tab-stop_times');
-    const routesEl = document.getElementById('tab-routes');
     const simpleEl = document.getElementById('tab-simple');
+
+    const FILE_DEFS = [
+      { file:'agency.txt', key:'agency', label:'Agency' },
+      { file:'calendar.txt', key:'calendar', label:'Calendar' },
+      { file:'calendar_dates.txt', key:'calendar_dates', label:'Calendar dates' },
+      { file:'fare_attributes.txt', key:'fare_attributes', label:'Fare attributes' },
+      { file:'fare_rules.txt', key:'fare_rules', label:'Fare rules' },
+      { file:'routes.txt', key:'routes', label:'Routes' },
+      { file:'shapes.txt', key:'shapes', label:'Shapes' },
+      { file:'stop_times.txt', key:'stop_times', label:'Stop times' },
+      { file:'stops.txt', key:'stops', label:'Stops' },
+      { file:'transfers.txt', key:'transfers', label:'Transfers' },
+      { file:'trips.txt', key:'trips', label:'Trips' }
+    ];
+
+    const containers = FILE_DEFS.reduce((acc, def) => {
+      const el = document.getElementById(`tab-${def.key}`);
+      if (el) acc[def.key] = el;
+      return acc;
+    }, {});
+
+    const FRIENDLY = { home:'Home', simple:'Simple trip table' };
+    FILE_DEFS.forEach(def => { FRIENDLY[def.key] = def.label; });
+
+    const FILES_BY_NAME = FILE_DEFS.reduce((acc, def) => {
+      acc[def.file] = def;
+      if (def.file.endsWith('.txt')) {
+        acc[def.file.replace(/\.txt$/, '.csv')] = def;
+      }
+      return acc;
+    }, {});
+
+    const SIMPLE_REQUIRED = ['trips','stop_times','routes'];
 
     const fileInput = document.getElementById('fileInput');
     const chooseBtn = document.getElementById('chooseBtn');
@@ -122,14 +160,10 @@
     const failedFilesEl = document.getElementById('failedFiles');
     const failedFilesList = document.getElementById('failedFilesList');
 
-    // No filenames in tabs
-    const FRIENDLY = { home:'Home', simple:'Simple trip table', trips:'Trips', stop_times:'Stop times', routes:'Routes' };
-
     let stagedFiles = [];
-    let parsedTrips = null;     // { headers, rows }
-    let parsedStopTimes = null; // { headers, rows }
-    let parsedRoutes = null;    // { headers, rows }
+    let parsedData = {};
     let failedImports = [];
+    let lastLoadedKey = null;
 
     // ===== Tabs =====
     function createTabButton(def, activeId) {
@@ -144,14 +178,13 @@
       tabsEl.innerHTML = '';
 
       const baseDefs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
-      if (tripsEl.dataset.loaded==='true' && stopTimesEl.dataset.loaded==='true' && routesEl.dataset.loaded==='true') {
+      if (simpleEl.dataset.loaded === 'true') {
         baseDefs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
       }
 
-      const importedDefs = [];
-      if (tripsEl.dataset.loaded==='true') importedDefs.push({ id:'trips', label:FRIENDLY.trips, target:'tab-trips' });
-      if (stopTimesEl.dataset.loaded==='true') importedDefs.push({ id:'stop_times', label:FRIENDLY.stop_times, target:'tab-stop_times' });
-      if (routesEl.dataset.loaded==='true') importedDefs.push({ id:'routes', label:FRIENDLY.routes, target:'tab-routes' });
+      const importedDefs = FILE_DEFS
+        .filter(def => containers[def.key]?.dataset.loaded === 'true')
+        .map(def => ({ id:def.key, label:def.label, target:`tab-${def.key}` }));
 
       const primaryRow = document.createElement('div');
       primaryRow.className = 'tab-row';
@@ -183,11 +216,12 @@
     function handleDrop(ev) { ev.preventDefault(); stagedFiles = Array.from(ev.dataTransfer.files||[]); renderSelectedFiles(); }
     if (chooseBtn) chooseBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => { stagedFiles = Array.from(fileInput.files||[]); renderSelectedFiles(); });
-    importBtn.addEventListener('click', async () => { if (!stagedFiles.length) { alert('Please select trips.txt, stop_times.txt and/or routes.txt'); return; } await importSelectedFiles(stagedFiles); });
+    importBtn.addEventListener('click', async () => { if (!stagedFiles.length) { alert('Please select GTFS files to import.'); return; } await importSelectedFiles(stagedFiles); });
     clearBtn.addEventListener('click', () => {
       stagedFiles=[]; fileInput.value=''; selectedFilesEl.innerHTML='';
-      [tripsEl, stopTimesEl, routesEl, simpleEl].forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; });
-      parsedTrips=parsedStopTimes=parsedRoutes=null; failedImports=[]; renderFailedFiles(failedImports); showContent('home');
+      Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; });
+      if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
+      parsedData={}; failedImports=[]; lastLoadedKey=null; renderFailedFiles(failedImports); showContent('home');
     });
 
     function renderSelectedFiles(){ if (!stagedFiles.length){ selectedFilesEl.innerHTML=''; return;} selectedFilesEl.innerHTML = stagedFiles.map(f=>`<span class="pill file-pill">${f.name}<span style="opacity:.6">${formatSize(f.size)}</span></span>`).join(' '); }
@@ -240,29 +274,39 @@
         }
       }
 
+      let lastImportedKey = null;
       for (const entry of pending){
         const name = entry.lowerName;
         let consumed=false;
-        if (name==='trips.txt') {
-          const parsed = parseCSV(entry.text); parsedTrips = parsed; renderDataTable(tripsEl, parsed.headers, parsed.rows, FRIENDLY.trips); tripsEl.dataset.loaded='true'; consumed=true;
-        } else if (name==='stop_times.txt') {
-          const parsed = parseCSV(entry.text); parsedStopTimes = parsed; renderDataTable(stopTimesEl, parsed.headers, parsed.rows, FRIENDLY.stop_times); stopTimesEl.dataset.loaded='true'; consumed=true;
-        } else if (name==='routes.txt') {
-          const parsed = parseCSV(entry.text); parsedRoutes = parsed; renderDataTable(routesEl, parsed.headers, parsed.rows, FRIENDLY.routes); routesEl.dataset.loaded='true'; consumed=true;
+        const def = FILES_BY_NAME[name];
+        if (def && containers[def.key]) {
+          const parsed = parseCSV(entry.text);
+          parsedData[def.key] = parsed;
+          renderDataTable(containers[def.key], parsed.headers, parsed.rows, def.label);
+          containers[def.key].dataset.loaded='true';
+          lastImportedKey = def.key;
+          consumed=true;
         } else {
           console.warn('Ignoring file:', entry.name);
         }
         if (!consumed){ failed.push({ name:entry.name, reason:'Unsupported file' }); }
       }
+      if (lastImportedKey) {
+        lastLoadedKey = lastImportedKey;
+      }
       failedImports = failed;
       renderFailedFiles(failedImports);
-      // Build simple table only when all three are present
-      if (tripsEl.dataset.loaded==='true' && stopTimesEl.dataset.loaded==='true' && routesEl.dataset.loaded==='true') {
+      const simpleReady = SIMPLE_REQUIRED.every(key => containers[key]?.dataset.loaded==='true');
+      if (simpleReady) {
         buildAndRenderSimpleTable();
         showContent('tab-simple');
       } else {
-        const active = tripsEl.dataset.loaded==='true' ? 'tab-trips' : (stopTimesEl.dataset.loaded==='true' ? 'tab-stop_times' : (routesEl.dataset.loaded==='true' ? 'tab-routes' : 'home'));
-        showContent(active);
+        const fallbackKey = lastImportedKey || lastLoadedKey;
+        if (fallbackKey) {
+          showContent(`tab-${fallbackKey}`);
+        } else {
+          showContent('home');
+        }
       }
     }
 
@@ -367,10 +411,16 @@
 
     // ===== Simple Trip Table =====
     function buildAndRenderSimpleTable(){
-      if (!parsedTrips || !parsedStopTimes || !parsedRoutes) return; // routes required
-      const tH = parsedTrips.headers, tR = parsedTrips.rows;
-      const sH = parsedStopTimes.headers, sR = parsedStopTimes.rows;
-      const rH = parsedRoutes.headers, rR = parsedRoutes.rows;
+      const trips = parsedData.trips;
+      const stopTimes = parsedData.stop_times;
+      const routes = parsedData.routes;
+      if (!trips || !stopTimes || !routes) {
+        if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
+        return;
+      }
+      const tH = trips.headers, tR = trips.rows;
+      const sH = stopTimes.headers, sR = stopTimes.rows;
+      const rH = routes.headers, rR = routes.rows;
 
       const IDX = {
         trips: { route_id: tH.indexOf('route_id'), trip_id: tH.indexOf('trip_id') },
