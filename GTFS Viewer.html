@@ -68,6 +68,14 @@
     /* Color chips */
     .chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:#0f1520}
     .chip-swatch{width:14px;height:14px;border-radius:4px;border:1px solid #0003}
+    .validation-card{margin-top:20px}
+    .validation-table tbody td:nth-child(1),
+    .validation-table tbody td:nth-child(2){font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+    .status-badge{display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:999px;font-weight:700;letter-spacing:.4px;color:#fff;min-width:90px;text-transform:uppercase}
+    .status-pass{background:#009600}
+    .status-missing-ok{background:#719600}
+    .status-missing-required{background:#be0000}
+    .status-forbidden{background:#be0000}
     .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(8,13,20,.65);backdrop-filter:blur(4px)}
     .modal[hidden]{display:none}
     .modal-dialog{position:relative;max-width:520px;width:100%;background:linear-gradient(180deg,rgba(17,24,39,.95),rgba(17,24,39,.9));border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 18px 45px rgba(0,0,0,.35);overflow:auto;max-height:90vh}
@@ -104,6 +112,22 @@
             <h3>Failed to upload</h3>
             <ul id="failedFilesList"></ul>
           </div>
+        </div>
+      </div>
+      <div class="card validation-card" id="validationCard" hidden>
+        <h2 style="margin-top:0">Missing file validation</h2>
+        <p id="validationInfo" class="hint">Results are based on the current import. Requirements adjust automatically according to related files.</p>
+        <div class="scroll">
+          <table class="validation-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Rule</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody id="validationTableBody"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -161,6 +185,8 @@
     // ===== Elements & state =====
     const tabsEl = document.getElementById('tabs');
     const simpleEl = document.getElementById('tab-simple');
+    const validationCard = document.getElementById('validationCard');
+    const validationTableBody = document.getElementById('validationTableBody');
 
     const FILE_DEFS = [
       { file:'agency.txt', key:'agency', label:'Agency' },
@@ -207,9 +233,15 @@
     FILE_DEFS.forEach(def => { FRIENDLY[def.key] = def.label; });
 
     const FILES_BY_NAME = FILE_DEFS.reduce((acc, def) => {
-      acc[def.file] = def;
-      if (def.file.endsWith('.txt')) {
-        acc[def.file.replace(/\.txt$/, '.csv')] = def;
+      const canonical = def.file.toLowerCase();
+      acc[canonical] = def;
+      if (canonical.endsWith('.txt')) {
+        const csvName = canonical.replace(/\.txt$/, '.csv');
+        acc[csvName] = def;
+      }
+      if (/\.geojson(?:\.txt)?$/.test(canonical)) {
+        const geojsonName = canonical.replace(/\.txt$/, '');
+        acc[geojsonName] = def;
       }
       return acc;
     }, {});
@@ -224,6 +256,7 @@
     const failedFilesEl = document.getElementById('failedFiles');
     const failedFilesList = document.getElementById('failedFilesList');
 
+    const loadedFileNames = new Set();
     let stagedFiles = [];
     let parsedData = {};
     let failedImports = [];
@@ -317,11 +350,29 @@
       stagedFiles=[]; fileInput.value=''; selectedFilesEl.innerHTML='';
       Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; });
       if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
-      parsedData={}; failedImports=[]; lastLoadedKey=null; renderFailedFiles(failedImports); showContent('home');
+      parsedData={}; failedImports=[]; lastLoadedKey=null; loadedFileNames.clear();
+      renderFailedFiles(failedImports);
+      updateValidationReport();
+      showContent('home');
     });
 
     function renderSelectedFiles(){ if (!stagedFiles.length){ selectedFilesEl.innerHTML=''; return;} selectedFilesEl.innerHTML = stagedFiles.map(f=>`<span class="pill file-pill">${f.name}<span style="opacity:.6">${formatSize(f.size)}</span></span>`).join(' '); }
     function formatSize(bytes){ if(bytes<1024)return `${bytes} B`; const kb=bytes/1024; if(kb<1024)return `${kb.toFixed(1)} KB`; const mb=kb/1024; return `${mb.toFixed(2)} MB`; }
+
+    function registerLoadedFile(def, actualName){
+      if (!def) return;
+      const names = new Set();
+      const canonical = String(def.file||'').toLowerCase();
+      if (canonical) names.add(canonical);
+      if (actualName) names.add(String(actualName).toLowerCase());
+      if (canonical.endsWith('.txt')) {
+        names.add(canonical.replace(/\.txt$/, '.csv'));
+      }
+      if (/\.geojson(?:\.txt)?$/.test(canonical)) {
+        names.add(canonical.replace(/\.txt$/, ''));
+      }
+      names.forEach(name => { if (name) loadedFileNames.add(name); });
+    }
 
     function renderFailedFiles(files){
       if (!failedFilesEl || !failedFilesList) return;
@@ -343,6 +394,134 @@
         frag.appendChild(li);
       });
       failedFilesList.appendChild(frag);
+    }
+
+    function hasFileReference(names){
+      if (!names) return false;
+      if (!Array.isArray(names)){
+        return loadedFileNames.has(String(names).toLowerCase());
+      }
+      return names.some(name => loadedFileNames.has(String(name).toLowerCase()));
+    }
+
+    function evaluateValidationRules(){
+      const results = [];
+      const hasCalendar = hasFileReference('calendar.txt');
+      const hasCalendarDates = hasFileReference('calendar_dates.txt');
+      const hasTranslations = hasFileReference('translations.txt');
+      const hasLocations = hasFileReference(['locations.geojson','locations.geojson.txt']);
+      const locationsData = parsedData['locations.geojson'];
+      let locationsHasData = false;
+      if (hasLocations){
+        if (!locationsData || !Array.isArray(locationsData.rows)) {
+          locationsHasData = true;
+        } else {
+          locationsHasData = locationsData.rows.length>0;
+        }
+      }
+      const pathwaysData = parsedData.pathways;
+      const pathwaysMode5 = (() => {
+        if (!pathwaysData) return false;
+        const idx = pathwaysData.headers.indexOf('pathway_mode');
+        if (idx === -1) return false;
+        return pathwaysData.rows.some(row => String(row[idx]||'').trim() === '5');
+      })();
+      const routesData = parsedData.routes;
+      const networkIdExists = (() => {
+        if (!routesData) return false;
+        const idx = routesData.headers.indexOf('network_id');
+        if (idx === -1) return false;
+        return routesData.rows.some(row => String(row[idx]||'').trim() !== '');
+      })();
+
+      function addConditionalRequired(file, rule, shouldBePresent, lookup){
+        const present = hasFileReference(lookup ?? file);
+        if (shouldBePresent){
+          results.push({ file, rule, status: present ? 'pass' : 'missing-required' });
+        } else {
+          results.push({ file, rule, status: present ? 'pass' : 'missing-ok' });
+        }
+      }
+      function addRequired(file, rule, lookup){ addConditionalRequired(file, rule, true, lookup); }
+      function addOptional(file, rule, lookup){ addConditionalRequired(file, rule, false, lookup); }
+      function addForbidden(file, rule, isForbidden, lookup){
+        const present = hasFileReference(lookup ?? file);
+        if (isForbidden){
+          results.push({ file, rule, status: present ? 'forbidden' : 'pass' });
+        } else {
+          results.push({ file, rule, status: present ? 'pass' : 'missing-ok' });
+        }
+      }
+
+      addRequired('agency.txt','Required');
+      addOptional('areas.txt','Optional');
+      addOptional('attributions.txt','Optional');
+      addOptional('booking_rules.txt','Optional');
+      addConditionalRequired('calendar.txt','Required if calendar_dates.txt is missing', !hasCalendarDates);
+      addConditionalRequired('calendar_dates.txt','Required if calendar.txt is missing', !hasCalendar);
+      addOptional('fare_attributes.txt','Optional');
+      addOptional('fare_leg_join_rules.txt','Optional');
+      addOptional('fare_leg_rules.txt','Optional');
+      addOptional('fare_media.txt','Optional');
+      addOptional('fare_products.txt','Optional');
+      addOptional('fare_rules.txt','Optional');
+      addOptional('fare_transfer_rules.txt','Optional');
+      addConditionalRequired('feed_info.txt','Required if translations.txt is provided', hasTranslations);
+      addOptional('frequencies.txt','Optional');
+      addConditionalRequired('levels.txt','Required if pathways.pathway_mode=5', pathwaysMode5);
+      addOptional('location_group_stops.txt','Optional');
+      addOptional('location_groups.txt','Optional');
+      addOptional('locations.geojson','Optional',['locations.geojson','locations.geojson.txt']);
+      addForbidden('networks.txt','Forbidden if network_id exists in routes.txt', networkIdExists);
+      addOptional('pathways.txt','Optional');
+      addOptional('rider_categories.txt','Optional');
+      addForbidden('route_networks.txt','Forbidden if network_id exists in routes.txt', networkIdExists);
+      addRequired('routes.txt','Required');
+      addOptional('shapes.txt','Optional');
+      addOptional('stop_areas.txt','Optional');
+      addRequired('stop_times.txt','Required');
+      addConditionalRequired('stops.txt','Required if locations.geojson has no data', !hasLocations || !locationsHasData);
+      addOptional('timeframes.txt','Optional');
+      addOptional('transfers.txt','Optional');
+      addOptional('translations.txt','Optional');
+      addRequired('trips.txt','Required');
+
+      return results;
+    }
+
+    function updateValidationReport(){
+      if (!validationCard || !validationTableBody) return;
+      if (!loadedFileNames.size){
+        validationTableBody.innerHTML='';
+        validationCard.hidden=true;
+        return;
+      }
+      const results = evaluateValidationRules();
+      const statusMeta = {
+        pass: { text:'PASSED', className:'status-badge status-pass' },
+        'missing-ok': { text:'MISSING', className:'status-badge status-missing-ok' },
+        'missing-required': { text:'MISSING', className:'status-badge status-missing-required' },
+        forbidden: { text:'FOUND', className:'status-badge status-forbidden' }
+      };
+      validationTableBody.innerHTML='';
+      const frag = document.createDocumentFragment();
+      results.forEach(item => {
+        const tr = document.createElement('tr');
+        const tdFile = document.createElement('td');
+        tdFile.textContent = item.file;
+        const tdRule = document.createElement('td');
+        tdRule.textContent = item.rule;
+        const tdStatus = document.createElement('td');
+        const meta = statusMeta[item.status] || statusMeta['missing-ok'];
+        const badge = document.createElement('span');
+        badge.className = meta.className;
+        badge.textContent = meta.text;
+        tdStatus.appendChild(badge);
+        tr.append(tdFile, tdRule, tdStatus);
+        frag.appendChild(tr);
+      });
+      validationTableBody.appendChild(frag);
+      validationCard.hidden=false;
     }
 
     async function importSelectedFiles(files){
@@ -380,6 +559,7 @@
           parsedData[def.key] = parsed;
           renderDataTable(containers[def.key], parsed.headers, parsed.rows, def.label);
           containers[def.key].dataset.loaded='true';
+          registerLoadedFile(def, entry.lowerName);
           lastImportedKey = def.key;
           consumed=true;
         } else {
@@ -392,6 +572,7 @@
       }
       failedImports = failed;
       renderFailedFiles(failedImports);
+      updateValidationReport();
       const simpleReady = SIMPLE_REQUIRED.every(key => containers[key]?.dataset.loaded==='true');
       if (simpleReady) {
         buildAndRenderSimpleTable();
