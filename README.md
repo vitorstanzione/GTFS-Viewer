@@ -11,20 +11,20 @@ A lightweight, browser-only GTFS viewer that loads standard GTFS `.txt` files so
 - 📊 “Simple trip table” view (requires `routes.txt`, `trips.txt`, and `stop_times.txt`)
 - 🎨 Route/brand colors rendered from `route_color` / `route_text_color` when valid
 - 🔗 Clickable URLs where present (e.g., `route_url`, `agency_url`)
-- 💾 (Planned) Export current view to CSV / JSON / clipboard
+- 💾 Export current view to CSV / JSON / clipboard
 
 ## What it loads
 At minimum, the app can show any GTFS table you provide. Some features need specific files:
 
 - **Core tables supported:** `agency.txt`, `stops.txt`, `routes.txt`, `trips.txt`, `stop_times.txt`, `calendar.txt`, `calendar_dates.txt`, `shapes.txt`, `feed_info.txt`, etc.
 - **Required for “Simple trip table”:** `routes.txt`, `trips.txt`, `stop_times.txt`
-  - The “Sign (route short name)” is taken from `route_short_name` in `routes.txt`.
 
 ## Quick Start
-1. Clone or download this repository.
+1. Download `GTFS Viewer.html` file.
 2. Open `GTFS Viewer.html` in your browser (double-click is fine).
-3. Drag & drop GTFS `.txt` files (or a `.zip` containing them) into the page.
-4. Start exploring.
+3. Click on "Choose files" and select GTFS `.txt` files (or a `.zip` containing them).
+4. Click on "Import".
+5. Start exploring.
 
 > Tip: If your browser blocks local file access for some features, serve the folder with a tiny static server (e.g., `python -m http.server 8000`) and open `http://localhost:8000`.
 
