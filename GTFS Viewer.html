@@ -262,10 +262,12 @@
     const originalImportBtnText = importBtn?.textContent || 'Import';
 
     const loadedFileNames = new Set();
+    const EAGER_LOAD_KEYS = new Set(['routes','stops','trips']);
+    const STOP_TIMES_FAST_THRESHOLD = 1_000_000;
     let stagedFiles = [];
     let parsedData = {};
     let failedImports = [];
-    let lastLoadedKey = null;
+    let fastModeConfig = {};
     let importInProgress = false;
     let importStatusHideTimer = null;
     let parserWorker = null;
@@ -290,7 +292,7 @@
       }
 
       const importedDefs = FILE_DEFS
-        .filter(def => containers[def.key]?.dataset.loaded === 'true')
+        .filter(def => containers[def.key]?.dataset.available === 'true')
         .map(def => ({ id:def.key, label:def.label, target:`tab-${def.key}` }));
 
       const headerRow = document.createElement('div');
@@ -330,6 +332,12 @@
 
     function showContent(id) {
       document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+      if (id && id.startsWith('tab-')){
+        const key = id.slice(4);
+        if (key && key !== 'simple'){
+          ensureTableRendered(key);
+        }
+      }
       const el = document.getElementById(id);
       if (el) el.classList.add('active');
       setTabs(id);
@@ -381,9 +389,9 @@
     clearBtn.addEventListener('click', () => {
       if (importInProgress) return;
       stagedFiles=[]; fileInput.value=''; selectedFilesEl.innerHTML='';
-      Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; });
+      Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; delete el.dataset.available; delete el.dataset.fastMode; });
       if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
-      parsedData={}; failedImports=[]; lastLoadedKey=null; loadedFileNames.clear();
+      parsedData={}; failedImports=[]; fastModeConfig={}; loadedFileNames.clear();
       renderFailedFiles(failedImports);
       updateValidationReport();
       updateImportStatus('');
@@ -612,8 +620,7 @@
       const results = Array.isArray(data.results) ? data.results : [];
       const failed = Array.isArray(data.failed) ? data.failed : [];
       const aggregatedFailed = [...failed];
-      let lastImportedKey = null;
-
+      fastModeConfig = {};
       for (const entry of results){
         if (!entry) continue;
         const lowerName = entry.lowerName || String(entry.name || '').toLowerCase();
@@ -621,10 +628,30 @@
         if (def && containers[def.key]) {
           if (entry.parsed && Array.isArray(entry.parsed.headers) && Array.isArray(entry.parsed.rows)){
             parsedData[def.key] = entry.parsed;
-            renderDataTable(containers[def.key], entry.parsed.headers, entry.parsed.rows, def.label);
-            containers[def.key].dataset.loaded='true';
             registerLoadedFile(def, entry.name || lowerName);
-            lastImportedKey = def.key;
+            const container = containers[def.key];
+            if (container){
+              container.innerHTML='';
+              delete container.dataset.loaded;
+              container.dataset.available='true';
+            }
+            if (def.key === 'stop_times'){
+              const rowCount = Array.isArray(entry.parsed.rows) ? entry.parsed.rows.length : 0;
+              if (rowCount > STOP_TIMES_FAST_THRESHOLD){
+                fastModeConfig.stop_times = { enabled:true, rowCount, aggregated:null };
+                if (container){
+                  container.dataset.fastMode='true';
+                }
+              } else {
+                fastModeConfig.stop_times = { enabled:false, rowCount };
+                if (container){
+                  delete container.dataset.fastMode;
+                }
+              }
+            }
+            if (EAGER_LOAD_KEYS.has(def.key)){
+              ensureTableRendered(def.key);
+            }
           } else {
             const reason = entry.sourceZip ? `No data parsed (from ${entry.sourceZip})` : 'No data parsed';
             aggregatedFailed.push({ name: entry.name || def.file, reason });
@@ -635,16 +662,12 @@
         }
       }
 
-      if (lastImportedKey){
-        lastLoadedKey = lastImportedKey;
-      }
-
       failedImports = aggregatedFailed;
       renderFailedFiles(failedImports);
       updateValidationReport();
 
       const previouslyActiveId = document.querySelector('.content.active')?.id || 'home';
-      const simpleReady = SIMPLE_REQUIRED.every(key => containers[key]?.dataset.loaded==='true');
+      const simpleReady = SIMPLE_REQUIRED.every(key => parsedData[key]);
       if (simpleReady) {
         buildAndRenderSimpleTable();
       }
@@ -655,10 +678,10 @@
       if (targetId !== 'home') {
         const targetEl = document.getElementById(targetId);
         const isSimpleTab = targetId === 'tab-simple';
-        const isLoaded = isSimpleTab
+        const isReady = isSimpleTab
           ? simpleEl?.dataset?.loaded === 'true'
-          : targetEl?.dataset?.loaded === 'true';
-        if (!isLoaded) {
+          : targetEl?.dataset?.available === 'true';
+        if (!isReady) {
           targetId = 'home';
         }
       }
@@ -973,6 +996,134 @@ self.onmessage = function(event){
           document.body.removeChild(textarea);
         }
       });
+    }
+
+    function ensureTableRendered(key){
+      const container = containers[key];
+      if (!container || container.dataset.loaded === 'true') return;
+      const data = parsedData[key];
+      if (!data) return;
+      if (key === 'stop_times' && fastModeConfig.stop_times?.enabled){
+        renderStopTimesFastMode(container, data, fastModeConfig.stop_times);
+      } else {
+        renderDataTable(container, data.headers, data.rows, FRIENDLY[key] || key);
+        if (container.dataset.fastMode){
+          delete container.dataset.fastMode;
+        }
+      }
+      container.dataset.loaded='true';
+      container.dataset.available='true';
+    }
+
+    function renderStopTimesFastMode(container, data, fastState){
+      container.innerHTML='';
+      container.dataset.fastMode='true';
+      const noticeCard=document.createElement('div');
+      noticeCard.className='card';
+      const noticeTitle=document.createElement('h2');
+      noticeTitle.style.marginTop='0';
+      noticeTitle.textContent='Stop Times Fast Mode';
+      const noticeBody=document.createElement('p');
+      const rowCount=fastState?.rowCount ?? data.rows.length;
+      noticeBody.innerHTML=`<strong>${rowCount.toLocaleString()} rows</strong> detected in <span class="kbd">stop_times.txt</span>. Displaying aggregated results by <code>trip_id</code> for faster browsing.`;
+      const noticeHint=document.createElement('p');
+      noticeHint.className='hint';
+      noticeHint.style.marginBottom='0';
+      noticeHint.textContent='Export actions will use the aggregated view. Reduce the dataset to exit Fast Mode.';
+      noticeCard.append(noticeTitle, noticeBody, noticeHint);
+      container.appendChild(noticeCard);
+
+      const tableHost=document.createElement('div');
+      container.appendChild(tableHost);
+      const aggregated = fastState.aggregated || buildStopTimesAggregate(data);
+      fastState.aggregated = aggregated;
+      renderDataTable(tableHost, aggregated.headers, aggregated.rows, `${FRIENDLY.stop_times} (Fast Mode)`);
+    }
+
+    function buildStopTimesAggregate(data){
+      const headers = Array.isArray(data.headers) ? data.headers : [];
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      const idxTrip = headers.indexOf('trip_id');
+      const idxSeq = headers.indexOf('stop_sequence');
+      const idxStopId = headers.indexOf('stop_id');
+      const idxArrival = headers.indexOf('arrival_time');
+      const idxDeparture = headers.indexOf('departure_time');
+      const summary = new Map();
+
+      rows.forEach(row => {
+        if (!row) return;
+        const tripId = idxTrip >= 0 ? row[idxTrip] : undefined;
+        if (tripId === undefined || tripId === null || tripId === '') return;
+        const seqRaw = idxSeq >= 0 ? row[idxSeq] : undefined;
+        const seqNum = seqRaw === undefined || seqRaw === null || seqRaw === '' ? NaN : Number(seqRaw);
+        const stopId = idxStopId >= 0 ? row[idxStopId] : '';
+        const arrival = idxArrival >= 0 ? row[idxArrival] : '';
+        const departure = idxDeparture >= 0 ? row[idxDeparture] : '';
+        let rec = summary.get(tripId);
+        if (!rec){
+          rec = {
+            tripId,
+            count:0,
+            minSeq: seqNum,
+            maxSeq: seqNum,
+            firstStop: stopId,
+            lastStop: stopId,
+            firstDep: departure,
+            lastArr: arrival
+          };
+          summary.set(tripId, rec);
+        }
+        rec.count += 1;
+        if (Number.isFinite(seqNum)){
+          if (!Number.isFinite(rec.minSeq) || seqNum < rec.minSeq){
+            rec.minSeq = seqNum;
+            rec.firstStop = stopId;
+            rec.firstDep = departure || rec.firstDep;
+          }
+          if (!Number.isFinite(rec.maxSeq) || seqNum > rec.maxSeq){
+            rec.maxSeq = seqNum;
+            rec.lastStop = stopId;
+            rec.lastArr = arrival || rec.lastArr;
+          }
+        } else {
+          if (!Number.isFinite(rec.minSeq)){
+            rec.firstStop = rec.firstStop || stopId;
+            rec.firstDep = rec.firstDep || departure;
+          }
+          if (!Number.isFinite(rec.maxSeq)){
+            rec.lastStop = stopId;
+            rec.lastArr = arrival || rec.lastArr;
+          }
+        }
+        if (!arrival && rec.lastArr){
+          // keep existing arrival time if new row missing
+        } else if (arrival){
+          rec.lastArr = arrival;
+        }
+        if (!departure && rec.firstDep){
+          // keep existing departure time if new row missing
+        } else if (departure && (!Number.isFinite(seqNum) || seqNum === rec.minSeq)){
+          rec.firstDep = departure;
+        }
+      });
+
+      const aggregatedRows = Array.from(summary.values()).map(rec => [
+        rec.tripId,
+        rec.count,
+        Number.isFinite(rec.minSeq) ? rec.minSeq : '',
+        rec.firstStop || '',
+        Number.isFinite(rec.maxSeq) ? rec.maxSeq : '',
+        rec.lastStop || '',
+        rec.firstDep || '',
+        rec.lastArr || ''
+      ]);
+
+      aggregatedRows.sort((a,b)=>String(a[0] ?? '').localeCompare(String(b[0] ?? ''), undefined, { numeric:true, sensitivity:'base' }));
+
+      return {
+        headers: ['trip_id','stop_count','first_stop_sequence','first_stop_id','last_stop_sequence','last_stop_id','first_departure_time','last_arrival_time'],
+        rows: aggregatedRows
+      };
     }
 
     function renderDataTable(container, headers, rows, title){
