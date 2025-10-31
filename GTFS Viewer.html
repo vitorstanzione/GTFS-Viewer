@@ -17,11 +17,25 @@
     .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0));border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
     .file-box{display:grid;gap:14px}
     label{color:var(--muted);font-weight:600}
-    input[type=file]{width:100%;padding:14px;background:#0f1520;color:var(--text);border:1px dashed #2a3a4d;border-radius:12px}
+    input[type=file]{
+      position:absolute;
+      width:1px;
+      height:1px;
+      padding:0;
+      margin:-1px;
+      overflow:hidden;
+      clip:rect(0,0,0,0);
+      border:0;
+    }
     .hint{color:var(--muted);font-size:12px}
     .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#0f1520;color:var(--text);cursor:pointer}
     .btn.primary{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(34,211,238,.14))}
+    .file-trigger{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .file-trigger .btn{min-width:140px;justify-content:center;display:inline-flex;font-weight:600}
+    .fail-box{margin-top:12px;padding:12px;border-radius:12px;border:1px solid rgba(229,62,62,.3);background:rgba(229,62,62,.08);}
+    .fail-box h3{margin:0 0 8px;font-size:13px;color:#fca5a5;letter-spacing:.2px}
+    .fail-box ul{margin:0;padding-left:18px;font-size:12px;color:#f8d7da;display:grid;gap:4px}
     .content{display:none}
     .content.active{display:block}
     table{border-collapse:collapse;width:100%;white-space:nowrap}
@@ -64,12 +78,20 @@
         <div class="file-box" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
           <label for="fileInput">Select GTFS files (.txt, .csv, .zip)</label>
           <input id="fileInput" type="file" accept=".txt,.csv,.zip" multiple />
-          <div class="hint">Drag & drop is supported, including GTFS ZIP bundles. Tabs: Trips, Stop times, Routes, and Simple trip table (derived). URLs become clickable; color fields render as swatches.</div>
+          <div class="file-trigger">
+            <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
+            <span class="hint">You can also drag & drop files anywhere in this panel.</span>
+          </div>
+          <div class="hint">GTFS ZIP bundles are supported. Tabs: Trips, Stop times, Routes, and Simple trip table (derived). URLs become clickable; color fields render as swatches.</div>
           <div class="actions">
             <button class="btn primary" id="importBtn">Import</button>
             <button class="btn" id="clearBtn" title="Clear tables & start over">Clear</button>
           </div>
           <div id="selectedFiles"></div>
+          <div id="failedFiles" class="fail-box" hidden>
+            <h3>Failed to upload</h3>
+            <ul id="failedFilesList"></ul>
+          </div>
         </div>
       </div>
     </section>
@@ -90,9 +112,12 @@
     const simpleEl = document.getElementById('tab-simple');
 
     const fileInput = document.getElementById('fileInput');
+    const chooseBtn = document.getElementById('chooseBtn');
     const importBtn = document.getElementById('importBtn');
     const clearBtn = document.getElementById('clearBtn');
     const selectedFilesEl = document.getElementById('selectedFiles');
+    const failedFilesEl = document.getElementById('failedFiles');
+    const failedFilesList = document.getElementById('failedFilesList');
 
     // No filenames in tabs
     const FRIENDLY = { home:'Home', simple:'Simple trip table', trips:'Trips', stop_times:'Stop times', routes:'Routes' };
@@ -101,6 +126,7 @@
     let parsedTrips = null;     // { headers, rows }
     let parsedStopTimes = null; // { headers, rows }
     let parsedRoutes = null;    // { headers, rows }
+    let failedImports = [];
 
     // ===== Tabs =====
     function setTabs(activeId) {
@@ -142,19 +168,43 @@
 
     // ===== File handling =====
     function handleDrop(ev) { ev.preventDefault(); stagedFiles = Array.from(ev.dataTransfer.files||[]); renderSelectedFiles(); }
+    if (chooseBtn) chooseBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => { stagedFiles = Array.from(fileInput.files||[]); renderSelectedFiles(); });
     importBtn.addEventListener('click', async () => { if (!stagedFiles.length) { alert('Please select trips.txt, stop_times.txt and/or routes.txt'); return; } await importSelectedFiles(stagedFiles); });
     clearBtn.addEventListener('click', () => {
       stagedFiles=[]; fileInput.value=''; selectedFilesEl.innerHTML='';
       [tripsEl, stopTimesEl, routesEl, simpleEl].forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; });
-      parsedTrips=parsedStopTimes=parsedRoutes=null; showContent('home');
+      parsedTrips=parsedStopTimes=parsedRoutes=null; failedImports=[]; renderFailedFiles(failedImports); showContent('home');
     });
 
     function renderSelectedFiles(){ if (!stagedFiles.length){ selectedFilesEl.innerHTML=''; return;} selectedFilesEl.innerHTML = stagedFiles.map(f=>`<span class="pill file-pill">${f.name}<span style="opacity:.6">${formatSize(f.size)}</span></span>`).join(' '); }
     function formatSize(bytes){ if(bytes<1024)return `${bytes} B`; const kb=bytes/1024; if(kb<1024)return `${kb.toFixed(1)} KB`; const mb=kb/1024; return `${mb.toFixed(2)} MB`; }
 
+    function renderFailedFiles(files){
+      if (!failedFilesEl || !failedFilesList) return;
+      failedFilesList.innerHTML='';
+      if (!files.length){ failedFilesEl.hidden=true; return; }
+      failedFilesEl.hidden=false;
+      const frag=document.createDocumentFragment();
+      files.forEach(item=>{
+        const li=document.createElement('li');
+        const nameSpan=document.createElement('span');
+        nameSpan.textContent=item.name;
+        li.appendChild(nameSpan);
+        if (item.reason){
+          const reasonSpan=document.createElement('span');
+          reasonSpan.textContent=` — ${item.reason}`;
+          reasonSpan.style.opacity='0.75';
+          li.appendChild(reasonSpan);
+        }
+        frag.appendChild(li);
+      });
+      failedFilesList.appendChild(frag);
+    }
+
     async function importSelectedFiles(files){
       const pending = [];
+      const failed = [];
       for (const file of files){
         const lower = file.name.toLowerCase();
         if (lower.endsWith('.zip')) {
@@ -164,25 +214,35 @@
           } catch (err) {
             console.error('Failed to read ZIP', file.name, err);
             alert(`Unable to read ZIP file: ${file.name}`);
+            failed.push({ name:file.name, reason:'Unable to read ZIP archive' });
           }
         } else {
-          const text = await readFile(file);
-          pending.push({ name:file.name, lowerName:lower, text });
+          try {
+            const text = await readFile(file);
+            pending.push({ name:file.name, lowerName:lower, text });
+          } catch (err) {
+            console.error('Failed to read file', file.name, err);
+            failed.push({ name:file.name, reason:'Unable to read file' });
+          }
         }
       }
 
       for (const entry of pending){
         const name = entry.lowerName;
+        let consumed=false;
         if (name==='trips.txt') {
-          const parsed = parseCSV(entry.text); parsedTrips = parsed; renderDataTable(tripsEl, parsed.headers, parsed.rows, FRIENDLY.trips); tripsEl.dataset.loaded='true';
+          const parsed = parseCSV(entry.text); parsedTrips = parsed; renderDataTable(tripsEl, parsed.headers, parsed.rows, FRIENDLY.trips); tripsEl.dataset.loaded='true'; consumed=true;
         } else if (name==='stop_times.txt') {
-          const parsed = parseCSV(entry.text); parsedStopTimes = parsed; renderDataTable(stopTimesEl, parsed.headers, parsed.rows, FRIENDLY.stop_times); stopTimesEl.dataset.loaded='true';
+          const parsed = parseCSV(entry.text); parsedStopTimes = parsed; renderDataTable(stopTimesEl, parsed.headers, parsed.rows, FRIENDLY.stop_times); stopTimesEl.dataset.loaded='true'; consumed=true;
         } else if (name==='routes.txt') {
-          const parsed = parseCSV(entry.text); parsedRoutes = parsed; renderDataTable(routesEl, parsed.headers, parsed.rows, FRIENDLY.routes); routesEl.dataset.loaded='true';
+          const parsed = parseCSV(entry.text); parsedRoutes = parsed; renderDataTable(routesEl, parsed.headers, parsed.rows, FRIENDLY.routes); routesEl.dataset.loaded='true'; consumed=true;
         } else {
           console.warn('Ignoring file:', entry.name);
         }
+        if (!consumed){ failed.push({ name:entry.name, reason:'Unsupported file' }); }
       }
+      failedImports = failed;
+      renderFailedFiles(failedImports);
       // Build simple table only when all three are present
       if (tripsEl.dataset.loaded==='true' && stopTimesEl.dataset.loaded==='true' && routesEl.dataset.loaded==='true') {
         buildAndRenderSimpleTable();
