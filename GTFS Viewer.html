@@ -10,7 +10,10 @@
     body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;background:radial-gradient(1200px 1200px at 10% -10%,rgba(77,163,255,.08),transparent),radial-gradient(1000px 800px at 110% 10%,rgba(34,211,238,.08),transparent),var(--bg);color:var(--text);min-height:100vh}
     header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
     header h1{margin:0;font-size:18px;letter-spacing:.2px}
-    .tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .tabs{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+    .tab-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .tab-group{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+    .tab-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);opacity:.8}
     .tab-btn{appearance:none;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;transition:.15s ease;font-weight:600}
     .tab-btn.active{background:linear-gradient(135deg,rgba(77,163,255,.12),rgba(34,211,238,.12));color:#e7edf3;border-color:#2a3a4d}
     .container{padding:20px 24px}
@@ -129,34 +132,44 @@
     let failedImports = [];
 
     // ===== Tabs =====
+    function createTabButton(def, activeId) {
+      const button = document.createElement('button');
+      button.className = 'tab-btn' + (def.target === activeId ? ' active' : '');
+      button.textContent = def.label;
+      button.addEventListener('click', () => showContent(def.target));
+      return button;
+    }
+
     function setTabs(activeId) {
       tabsEl.innerHTML = '';
-      const defs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
-      // Simple appears next to Home only when all three are loaded
+
+      const baseDefs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
       if (tripsEl.dataset.loaded==='true' && stopTimesEl.dataset.loaded==='true' && routesEl.dataset.loaded==='true') {
-        defs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
+        baseDefs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
       }
-      if (tripsEl.dataset.loaded==='true') defs.push({ id:'trips', label:FRIENDLY.trips, target:'tab-trips' });
-      if (stopTimesEl.dataset.loaded==='true') defs.push({ id:'stop_times', label:FRIENDLY.stop_times, target:'tab-stop_times' });
-      if (routesEl.dataset.loaded==='true') defs.push({ id:'routes', label:FRIENDLY.routes, target:'tab-routes' });
 
-      defs.forEach(def => {
-        const b = document.createElement('button');
-        b.className = 'tab-btn' + (def.target === activeId ? ' active' : '');
-        b.textContent = def.label;
-        b.addEventListener('click', () => showContent(def.target));
-        tabsEl.appendChild(b);
-      });
+      const importedDefs = [];
+      if (tripsEl.dataset.loaded==='true') importedDefs.push({ id:'trips', label:FRIENDLY.trips, target:'tab-trips' });
+      if (stopTimesEl.dataset.loaded==='true') importedDefs.push({ id:'stop_times', label:FRIENDLY.stop_times, target:'tab-stop_times' });
+      if (routesEl.dataset.loaded==='true') importedDefs.push({ id:'routes', label:FRIENDLY.routes, target:'tab-routes' });
 
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        const t = btn.textContent;
-        const isActive = (t===FRIENDLY.home && activeId==='home')
-          || (t===FRIENDLY.simple && activeId==='tab-simple')
-          || (t===FRIENDLY.trips && activeId==='tab-trips')
-          || (t===FRIENDLY.stop_times && activeId==='tab-stop_times')
-          || (t===FRIENDLY.routes && activeId==='tab-routes');
-        btn.classList.toggle('active', isActive);
-      });
+      const primaryRow = document.createElement('div');
+      primaryRow.className = 'tab-row';
+      baseDefs.forEach(def => primaryRow.appendChild(createTabButton(def, activeId)));
+      tabsEl.appendChild(primaryRow);
+
+      if (importedDefs.length) {
+        const group = document.createElement('div');
+        group.className = 'tab-group';
+        const label = document.createElement('div');
+        label.className = 'tab-group-label';
+        label.textContent = 'Imported files';
+        const row = document.createElement('div');
+        row.className = 'tab-row';
+        importedDefs.forEach(def => row.appendChild(createTabButton(def, activeId)));
+        group.append(label, row);
+        tabsEl.appendChild(group);
+      }
     }
 
     function showContent(id) {
