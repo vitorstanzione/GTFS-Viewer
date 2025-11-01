@@ -984,7 +984,88 @@ function parseCSVText(text){
   return parser.finish();
 }
 
-async function parseBlobToTable(blob){
+function readBlobSliceAsText(slice){
+  return new Promise((resolve, reject)=>{
+    if (!slice){
+      resolve('');
+      return;
+    }
+    if (typeof FileReader !== 'function'){
+      reject(new Error('FileReader not available'));
+      return;
+    }
+    let reader = new FileReader();
+    const cleanup = ()=>{
+      if (!reader) return;
+      reader.onload = null;
+      reader.onerror = null;
+      reader.onabort = null;
+    };
+    reader.onload = ()=>{
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      cleanup();
+      reader = null;
+      resolve(result);
+    };
+    reader.onerror = ()=>{
+      const err = reader && reader.error ? reader.error : new Error('FileReader error');
+      cleanup();
+      reader = null;
+      reject(err);
+    };
+    try {
+      reader.readAsText(slice);
+    } catch (err){
+      cleanup();
+      reader = null;
+      reject(err);
+    }
+  });
+}
+
+async function parseBlobToTable(blob, options){
+  const hasBlob = !!blob;
+  const opts = options && typeof options === 'object' ? options : null;
+  const progressOpts = opts && typeof opts.progress === 'object' ? opts.progress : null;
+  const canPostMessage = typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof buildProgressPayload === 'function';
+  const progressProcessed = progressOpts && Number.isFinite(progressOpts.processed) ? progressOpts.processed : 0;
+  const progressTotal = progressOpts && Number.isFinite(progressOpts.total) ? progressOpts.total : 0;
+  const progressName = progressOpts && progressOpts.name ? String(progressOpts.name) : '';
+  const progressMessage = progressOpts && progressOpts.message ? String(progressOpts.message) : (progressName ? 'Reading file' : 'Processing file');
+  const totalBytesFromOptions = progressOpts && Number.isFinite(progressOpts.totalBytes) ? progressOpts.totalBytes : null;
+  const blobSize = hasBlob && typeof blob.size === 'number' && blob.size >= 0 ? blob.size : null;
+  const progressTotalBytes = Number.isFinite(totalBytesFromOptions) ? totalBytesFromOptions : (Number.isFinite(blobSize) ? blobSize : null);
+  let lastProgressBytes = 0;
+  let lastProgressPercent = -1;
+  const emitProgress = (bytes, percentOverride, force)=>{
+    if (!progressOpts || !canPostMessage) return;
+    const totalBytes = progressTotalBytes;
+    const normalizedBytes = Number.isFinite(bytes) && bytes >= 0 ? bytes : 0;
+    let percent = null;
+    let shouldEmit = force === true;
+    if (Number.isFinite(percentOverride)){
+      percent = percentOverride;
+      if (!shouldEmit && percent !== lastProgressPercent){
+        shouldEmit = true;
+      }
+    } else if (Number.isFinite(totalBytes) && totalBytes > 0){
+      percent = Math.floor((normalizedBytes / totalBytes) * 100);
+      if (!shouldEmit && percent !== lastProgressPercent){
+        shouldEmit = true;
+      }
+    } else if (!shouldEmit && normalizedBytes - lastProgressBytes >= 524288){
+      shouldEmit = true;
+    }
+    if (!shouldEmit) return;
+    lastProgressBytes = normalizedBytes;
+    if (Number.isFinite(percent)) lastProgressPercent = percent;
+    const extra = {};
+    if (Number.isFinite(normalizedBytes)) extra.entryProcessedBytes = normalizedBytes;
+    if (Number.isFinite(totalBytes)) extra.entryTotalBytes = totalBytes;
+    if (Number.isFinite(percent)) extra.entryPercent = Math.max(0, Math.min(100, percent));
+    self.postMessage(buildProgressPayload(progressProcessed, progressTotal, progressName, progressMessage, extra));
+  };
+
   if (blob && blob.stream && typeof TextDecoderStream === 'function'){
     try {
       const parser = createIncrementalCSVParser();
@@ -998,6 +1079,41 @@ async function parseBlobToTable(blob){
       } finally {
         reader.releaseLock();
       }
+      return parser.finish();
+    } catch (err){
+      // Fallback handled below
+    }
+  }
+  if (blob && typeof FileReader === 'function' && typeof blob.slice === 'function'){
+    try {
+      const parser = createIncrementalCSVParser();
+      const minChunkSize = 2 * 1024 * 1024;
+      const maxChunkSize = 4 * 1024 * 1024;
+      let chunkSize = opts && Number.isFinite(opts.chunkSize) && opts.chunkSize > 0 ? opts.chunkSize : maxChunkSize;
+      chunkSize = Math.max(1, Math.min(maxChunkSize, Math.max(minChunkSize, Math.floor(chunkSize))));
+      const totalBytes = Number.isFinite(blobSize) ? blobSize : null;
+      if (totalBytes === null){
+        throw new Error('Blob size unavailable');
+      }
+      emitProgress(0, totalBytes > 0 ? 0 : null, true);
+      if (totalBytes === 0){
+        emitProgress(0, totalBytes > 0 ? 100 : null, true);
+        return parser.finish();
+      }
+      let offset = 0;
+      while (offset < totalBytes){
+        const end = Math.min(offset + chunkSize, totalBytes);
+        let slice = blob.slice(offset, end);
+        let chunkText = await readBlobSliceAsText(slice);
+        slice = null;
+        if (chunkText) parser.processChunk(chunkText);
+        const bytesRead = end;
+        chunkText = null;
+        emitProgress(bytesRead, null, false);
+        if (end <= offset) break;
+        offset = end;
+      }
+      emitProgress(totalBytes, 100, true);
       return parser.finish();
     } catch (err){
       // Fallback handled below
@@ -1117,7 +1233,16 @@ async function handleImport(files){
   for (const task of tasks){
     if (task.type === 'file'){
       try {
-        const parsed = await parseBlobToTable(task.file);
+        const fileSize = task.file && typeof task.file.size === 'number' ? task.file.size : null;
+        const parsed = await parseBlobToTable(task.file, {
+          progress: {
+            processed,
+            total,
+            name: task.name,
+            message: 'Reading file',
+            totalBytes: Number.isFinite(fileSize) ? fileSize : null
+          }
+        });
         results.push({ name: task.name, lowerName: task.lowerName, parsed });
       } catch (err){
         failed.push({ name: task.name, reason: 'Unable to read file' });
@@ -1182,7 +1307,17 @@ async function handleImport(files){
               }
             }
           });
-          const parsed = await parseBlobToTable(blob);
+          const parseMessage = task.zipName ? 'Parsing ZIP entry (' + task.zipName + ')' : 'Parsing file';
+          const parseTotalBytes = typeof blob.size === 'number' ? blob.size : (Number.isFinite(entrySize) ? entrySize : null);
+          const parsed = await parseBlobToTable(blob, {
+            progress: {
+              processed,
+              total,
+              name: entryInfo.name,
+              message: parseMessage,
+              totalBytes: Number.isFinite(parseTotalBytes) ? parseTotalBytes : null
+            }
+          });
           if (!parsed || !parsed.headers){
             throw new Error('Unable to parse entry');
           }
