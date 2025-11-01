@@ -1153,10 +1153,18 @@ async function handleImport(files){
         emitProgress(0, entrySize > 0 ? 0 : null);
         let entrySucceeded = false;
         try {
-          const writer = createStreamingCSVWriter({
-            onChunk(chunkLength){
-              if (!chunkLength) return;
-              bytesProcessed += chunkLength;
+          if (!entry || typeof entry.getData !== 'function'){
+            throw new Error('Invalid ZIP entry');
+          }
+          const writer = new self.zip.BlobWriter('text/plain');
+          const blob = await entry.getData(writer, {
+            onprogress(index, max){
+              if (typeof index === 'number' && Number.isFinite(index)){
+                bytesProcessed = index;
+              }
+              if (typeof max === 'number' && Number.isFinite(max) && max > 0){
+                entrySize = max;
+              }
               let shouldEmit = false;
               let percent = null;
               if (entrySize > 0){
@@ -1172,18 +1180,13 @@ async function handleImport(files){
               if (shouldEmit){
                 emitProgress(bytesProcessed, percent);
               }
-            },
-            onComplete(){
-              emitProgress(bytesProcessed, 100);
             }
           });
-          if (!entry || typeof entry.getData !== 'function'){
-            throw new Error('Invalid ZIP entry');
-          }
-          const parsed = await entry.getData(writer);
+          const parsed = await parseBlobToTable(blob);
           if (!parsed || !parsed.headers){
             throw new Error('Unable to parse entry');
           }
+          emitProgress(bytesProcessed || entrySize, 100);
           results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed, sourceZip: task.zipName });
           entrySucceeded = true;
         } catch (err){
