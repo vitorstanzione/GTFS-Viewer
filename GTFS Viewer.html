@@ -1604,8 +1604,21 @@ self.onmessage = function(event){
         const { filteredRows, workingRows } = computeActiveRows();
         const {pageRows,page,pages}=paginate(workingRows,state.page,state.pageSize); state.page=page;
         tbody.innerHTML=''; const frag=document.createDocumentFragment();
-        pageRows.forEach(r=>{ const tr=document.createElement('tr'); r.forEach((cell,idx)=>{ const td=document.createElement('td'); const header=state.headers[idx]||''; const val=String(cell||'');
-          if (/url/i.test(header) && /^https?:\/\//i.test(val)) { const a=document.createElement('a'); a.href=val; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; td.appendChild(a); }
+        const isStopsTable = container?.id === 'tab-stops';
+        const idxStopName = isStopsTable ? state.headers.indexOf('stop_name') : -1;
+        const idxStopLat = isStopsTable ? state.headers.indexOf('stop_lat') : -1;
+        const idxStopLon = isStopsTable ? state.headers.indexOf('stop_lon') : -1;
+        pageRows.forEach(r=>{ const tr=document.createElement('tr');
+          const latRaw = idxStopLat >= 0 ? r[idxStopLat] : undefined;
+          const lonRaw = idxStopLon >= 0 ? r[idxStopLon] : undefined;
+          const latStr = latRaw == null ? '' : String(latRaw).trim();
+          const lonStr = lonRaw == null ? '' : String(lonRaw).trim();
+          const latNum = latStr === '' ? NaN : Number(latStr);
+          const lonNum = lonStr === '' ? NaN : Number(lonStr);
+          const hasStopLocation = isStopsTable && Number.isFinite(latNum) && Number.isFinite(lonNum) && Math.abs(latNum) <= 90 && Math.abs(lonNum) <= 180;
+          r.forEach((cell,idx)=>{ const td=document.createElement('td'); const header=state.headers[idx]||''; const val=String(cell||'');
+          if (hasStopLocation && idx === idxStopName && val){ const a=document.createElement('a'); a.href=`https://www.google.com/maps/search/${latStr},${lonStr}`; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; td.appendChild(a); }
+          else if (/url/i.test(header) && /^https?:\/\//i.test(val)) { const a=document.createElement('a'); a.href=val; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; td.appendChild(a); }
           else if (/color/i.test(header) && isValidHex6(val)) { const chip=document.createElement('span'); chip.className='chip'; const sw=document.createElement('span'); sw.className='chip-swatch'; sw.style.background=normalizeHex(val); const tx=document.createElement('span'); tx.textContent=val.replace(/^#/,'').toUpperCase(); if (/route_text_color/i.test(header)) tx.style.color=normalizeHex(val); chip.appendChild(sw); chip.appendChild(tx); td.appendChild(chip); }
           else { td.textContent=val; if (/_id$/.test(header) || /^\d{1,2}:\d{2}:\d{2}$/.test(val)) td.style.fontFamily='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'; }
           tr.appendChild(td); }); frag.appendChild(tr); });
