@@ -978,10 +978,6 @@ function buildProgressPayload(processed, total, current, message){
   return { type:'progress', processed, total, current, message };
 }
 
-function normalizeZipPath(path){
-  return String(path||'').replace(/\\/g,'/');
-}
-
 async function parseZipEntry(entry, progressCallback){
   const reportProgress = typeof progressCallback === 'function' ? progressCallback : null;
   const options = {};
@@ -1032,12 +1028,11 @@ async function handleImport(files){
         const entries = [];
         for (const entry of rawEntries){
           if (!entry || entry.directory) continue;
-          const normalizedPath = normalizeZipPath(entry.filename);
-          const baseName = normalizedPath.split('/').pop();
+          const baseName = entry.filename.split('/').pop();
           if (!baseName) continue;
           const lower = baseName.toLowerCase();
           if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) continue;
-          entries.push({ path: normalizedPath, name: baseName, lowerName: lower, size: entry.uncompressedSize });
+          entries.push({ path: entry.filename, name: baseName, lowerName: lower, size: entry.uncompressedSize });
         }
         await zipReader.close();
         zipReader = null;
@@ -1080,21 +1075,11 @@ async function handleImport(files){
         const entryMap = new Map();
         for (const entry of rawEntries){
           if (entry && !entry.directory){
-            const normalizedPath = normalizeZipPath(entry.filename);
-            entryMap.set(normalizedPath, entry);
-            const baseName = normalizedPath.split('/').pop();
-            if (baseName && !entryMap.has(baseName)){
-              entryMap.set(baseName, entry);
-            }
+            entryMap.set(entry.filename, entry);
           }
         }
         for (const entryInfo of task.entries){
-          const normalizedPath = normalizeZipPath(entryInfo.path);
-          let entry = entryMap.get(normalizedPath);
-          if (!entry){
-            const baseName = normalizedPath.split('/').pop();
-            entry = baseName ? entryMap.get(baseName) : null;
-          }
+          const entry = entryMap.get(entryInfo.path);
           if (!entry){
             const failReason = task.zipName ? 'Unable to read file from ' + task.zipName : 'Unable to read file from ZIP';
             failed.push({ name: entryInfo.name, reason: failReason });
