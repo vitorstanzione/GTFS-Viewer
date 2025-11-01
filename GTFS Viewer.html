@@ -258,6 +258,14 @@
     const chooseBtn = document.getElementById('chooseBtn');
     const importBtn = document.getElementById('importBtn');
     const clearBtn = document.getElementById('clearBtn');
+
+    function resetValidationCard(){
+      if (!validationCard || !validationTableBody) return;
+      validationTableBody.innerHTML='';
+      validationCard.hidden=true;
+    }
+
+    resetValidationCard();
     const selectedFilesEl = document.getElementById('selectedFiles');
     const failedFilesEl = document.getElementById('failedFiles');
     const failedFilesList = document.getElementById('failedFilesList');
@@ -639,8 +647,7 @@
     function updateValidationReport(){
       if (!validationCard || !validationTableBody) return;
       if (!loadedFileNames.size){
-        validationTableBody.innerHTML='';
-        validationCard.hidden=true;
+        resetValidationCard();
         return;
       }
       const results = evaluateValidationRules();
