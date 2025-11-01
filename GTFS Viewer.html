@@ -263,7 +263,9 @@
     function resetValidationCard(){
       if (!validationCard || !validationTableBody) return;
       validationTableBody.innerHTML='';
-      validationCard.hidden=true;
+      validationCard.hidden = true;
+      validationCard.setAttribute('aria-hidden','true');
+      validationCard.style.display = 'none';
     }
 
     resetValidationCard();
@@ -676,7 +678,9 @@
         frag.appendChild(tr);
       });
       validationTableBody.appendChild(frag);
-      validationCard.hidden=false;
+      validationCard.hidden = false;
+      validationCard.removeAttribute('aria-hidden');
+      validationCard.style.display = '';
     }
 
     async function importSelectedFiles(files){
