@@ -1311,11 +1311,21 @@ self.onmessage = function(event){
         return workingRows;
       }
       function showExportMessage(text, timeout=2000){
-        exportMessage.textContent=text;
+        const trimmedText=String(text ?? '').trim();
+        if (!trimmedText){
+          exportMessage.textContent='';
+          exportMessage.hidden=true;
+          clearTimeout(exportMessage._hideTimer);
+          return;
+        }
+        exportMessage.textContent=trimmedText;
         exportMessage.hidden=false;
         if (timeout){
           clearTimeout(exportMessage._hideTimer);
-          exportMessage._hideTimer=setTimeout(()=>{ exportMessage.hidden=true; },timeout);
+          exportMessage._hideTimer=setTimeout(()=>{
+            exportMessage.hidden=true;
+            exportMessage.textContent='';
+          },timeout);
         }
       }
       exportSelect.addEventListener('change',()=>{
