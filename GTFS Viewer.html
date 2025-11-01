@@ -73,6 +73,7 @@
     /* Color chips */
     .chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:#0f1520}
     .chip-swatch{width:14px;height:14px;border-radius:4px;border:1px solid #0003}
+    .map-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:currentColor}
     .validation-card{margin-top:20px;display:inline-block;max-width:100%}
     .validation-card .scroll{display:inline-block;max-width:100%}
     .validation-card .validation-table{width:auto}
@@ -1617,7 +1618,7 @@ self.onmessage = function(event){
           const lonNum = lonStr === '' ? NaN : Number(lonStr);
           const hasStopLocation = isStopsTable && Number.isFinite(latNum) && Number.isFinite(lonNum) && Math.abs(latNum) <= 90 && Math.abs(lonNum) <= 180;
           r.forEach((cell,idx)=>{ const td=document.createElement('td'); const header=state.headers[idx]||''; const val=String(cell||'');
-          if (hasStopLocation && idx === idxStopName && val){ const a=document.createElement('a'); a.href=`https://www.google.com/maps/search/${latStr},${lonStr}`; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; td.appendChild(a); }
+          if (hasStopLocation && idx === idxStopName && val){ const a=document.createElement('a'); a.href=`https://www.google.com/maps/search/${latStr},${lonStr}`; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; a.className='map-link'; td.appendChild(a); }
           else if (/url/i.test(header) && /^https?:\/\//i.test(val)) { const a=document.createElement('a'); a.href=val; a.textContent=val; a.target='_blank'; a.rel='noopener noreferrer'; td.appendChild(a); }
           else if (/color/i.test(header) && isValidHex6(val)) { const chip=document.createElement('span'); chip.className='chip'; const sw=document.createElement('span'); sw.className='chip-swatch'; sw.style.background=normalizeHex(val); const tx=document.createElement('span'); tx.textContent=val.replace(/^#/,'').toUpperCase(); if (/route_text_color/i.test(header)) tx.style.color=normalizeHex(val); chip.appendChild(sw); chip.appendChild(tx); td.appendChild(chip); }
           else { td.textContent=val; if (/_id$/.test(header) || /^\d{1,2}:\d{2}:\d{2}$/.test(val)) td.style.fontFamily='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'; }
