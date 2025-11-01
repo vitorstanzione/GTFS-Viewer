@@ -35,8 +35,10 @@
     }
     .hint{color:var(--muted);font-size:12px}
     .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#0f1520;color:var(--text);cursor:pointer}
+    .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#0f1520;color:var(--text);cursor:pointer;transition:.15s ease}
     .btn.primary{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(34,211,238,.14))}
+    .btn:disabled{background:#080d17;border-color:#111826;color:#57667a;cursor:not-allowed;opacity:1}
+    .btn.primary:disabled{background:#080d17;border-color:#111826}
     .file-trigger{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .file-trigger .btn{min-width:140px;justify-content:center;display:inline-flex;font-weight:600}
     .fail-box{margin-top:12px;padding:12px;border-radius:12px;border:1px solid rgba(229,62,62,.3);background:rgba(229,62,62,.08);}
@@ -108,7 +110,7 @@
           <div class="file-trigger">
             <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
             <button class="btn primary" id="importBtn">Import</button>
-            <button class="btn" id="clearBtn" title="Clear tables & start over">Clear</button>
+            <button class="btn primary" id="clearBtn" title="Clear tables & start over">Clear</button>
             <span class="hint">You can also drag & drop files anywhere in this panel.</span>
           </div>
           <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Frequencies, Routes, Shapes, Stop times, Stops, Transfers, Trips, and OD time table (derived). URLs become clickable; color fields render as swatches.</div>
