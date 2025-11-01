@@ -115,6 +115,8 @@
             <span class="hint">You can also drag & drop files anywhere in this panel.</span>
           </div>
           <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Frequencies, Routes, Shapes, Stop times, Stops, Transfers, Trips, and OD time table (derived). URLs become clickable; color fields render as swatches.</div>
+          <div class="hint">Real-world note: imports around 30&nbsp;MB have worked so far; a 60&nbsp;MB feed currently fails to finish.</div>
+          <div class="hint">The missing-file validation checks whether required/forbidden files are present for the scenario, but it doesn’t yet look at headers, field formats, or the file contents themselves.</div>
           <div id="selectedFiles"></div>
           <div id="importStatus" class="pill" hidden aria-live="polite"></div>
           <div id="failedFiles" class="fail-box" hidden>
