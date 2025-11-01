@@ -46,9 +46,16 @@ At minimum, the app can show any static GTFS table you provide. Some features ne
 - This repository is read-only: I maintain the original version myself.
 - If you’d like to modify or extend it, please **fork** the project and make changes in your own copy.
 
+## Testing
+
+### Manual verification
+- **Chrome (latest stable):** Import a large GTFS text file (200 MB+). Confirm the import status updates incrementally without falling back to `blob.text()`.
+- **Firefox (latest stable):** Repeat the large file import and ensure streaming progress is reported continuously.
+- **Safari (latest stable):** Import the same large feed and verify chunked parsing completes without triggering the legacy `blob.text()` path.
+
 ## Contributing
-This repository does **not accept pull requests or direct changes**.  
-If you’d like to build upon it, feel free to fork it or clone it and create your own version.  
+This repository does **not accept pull requests or direct changes**.
+If you’d like to build upon it, feel free to fork it or clone it and create your own version.
 You don’t need permission — just give credit if you want to.
 
 ## License
