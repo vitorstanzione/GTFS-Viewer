@@ -32,7 +32,7 @@ At minimum, the app can show any static GTFS table you provide. Some features ne
 - You can load a full `.zip` feed or select individual `.txt` files.
 - Sorting: click a column header. (Planned) **Shift+Click** to add secondary sort.
 - Colors: if `route_color` / `route_text_color` are valid hex (e.g., `2c8976`), they’ll render.
-- File size: uploads around 30 MB have worked in testing; a 60 MB feed currently fails to import.
+- File size: uploads around 30 MB have worked in testing; a 60 MB feed currently fails to import; another with 80 MB worked smoothly.
 - Validation: the missing-file checker covers whether required/forbidden files are included for the current context, but it doesn’t yet confirm required headers, field formats, or file contents.
 
 ## Roadmap / Ideas
