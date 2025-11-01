@@ -711,6 +711,26 @@
       if (clearBtn) clearBtn.disabled = flag;
     }
 
+    function formatHumanBytes(bytes){
+      if (!Number.isFinite(bytes) || bytes <= 0) return '';
+      const units = ['B','KB','MB','GB','TB'];
+      let value = bytes;
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1){
+        value /= 1024;
+        unitIndex++;
+      }
+      const precision = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+      return `${value.toFixed(precision)} ${units[unitIndex]}`;
+    }
+
+    function formatProgressBytes(processed, total){
+      const processedText = formatHumanBytes(processed);
+      if (!processedText) return '';
+      const totalText = formatHumanBytes(total);
+      return totalText ? `${processedText} / ${totalText}` : processedText;
+    }
+
     function handleWorkerMessage(event){
       const data = event.data || {};
       if (data.type === 'progress'){
@@ -718,12 +738,21 @@
         const total = Number.isFinite(data.total) ? data.total : 0;
         const message = data.message ? String(data.message) : '';
         const current = data.current ? String(data.current) : '';
+        const entryPercent = Number.isFinite(data.entryPercent) ? Math.max(0, Math.min(100, Math.round(data.entryPercent))) : null;
+        const entryProcessedBytes = Number.isFinite(data.entryProcessedBytes) ? data.entryProcessedBytes : null;
+        const entryTotalBytes = Number.isFinite(data.entryTotalBytes) ? data.entryTotalBytes : null;
         const parts = [];
         if (message) parts.push(message);
         if (total > 0){
           parts.push(`${Math.min(processed, total)}/${total}`);
         } else if (processed > 0){
           parts.push(String(processed));
+        }
+        if (entryPercent !== null){
+          parts.push(`${entryPercent}%`);
+        } else {
+          const sizeText = formatProgressBytes(entryProcessedBytes, entryTotalBytes);
+          if (sizeText) parts.push(sizeText);
         }
         if (current) parts.push(current);
         updateImportStatus(parts.join(' • '));
@@ -851,7 +880,11 @@
 
     function createParserWorker(){
       const workerSource = String.raw`
-self.importScripts('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+self.importScripts('https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.60/dist/zip.min.js');
+
+if (self.zip && typeof self.zip.configure === 'function'){
+  self.zip.configure({ useWebWorkers: false });
+}
 
 function createIncrementalCSVParser(){
   const rows=[];
@@ -974,8 +1007,58 @@ async function parseBlobToTable(blob){
   return parseCSVText(text);
 }
 
-function buildProgressPayload(processed, total, current, message){
-  return { type:'progress', processed, total, current, message };
+function buildProgressPayload(processed, total, current, message, extra){
+  const payload = { type:'progress', processed, total, current, message };
+  if (extra && typeof extra === 'object'){
+    for (const key in extra){
+      if (Object.prototype.hasOwnProperty.call(extra, key) && typeof extra[key] !== 'undefined'){
+        payload[key] = extra[key];
+      }
+    }
+  }
+  return payload;
+}
+
+function createStreamingCSVWriter(options){
+  const parser = createIncrementalCSVParser();
+  const supportsDecoder = typeof TextDecoder === 'function';
+  const decoder = supportsDecoder ? new TextDecoder() : null;
+  const onChunk = options && typeof options.onChunk === 'function' ? options.onChunk : null;
+  const onComplete = options && typeof options.onComplete === 'function' ? options.onComplete : null;
+  function decodeArray(array){
+    if (!array || !array.length) return '';
+    if (decoder){
+      return decoder.decode(array, { stream:true });
+    }
+    let text = '';
+    for (let i=0; i<array.length; i++) text += String.fromCharCode(array[i]);
+    return text;
+  }
+  return {
+    writeUint8Array(array){
+      const chunkText = decodeArray(array);
+      if (chunkText) parser.processChunk(chunkText);
+      if (onChunk) onChunk(array ? array.length : 0);
+    },
+    getData(){
+      if (decoder){
+        const trailing = decoder.decode();
+        if (trailing) parser.processChunk(trailing);
+      }
+      if (onComplete) onComplete();
+      return parser.finish();
+    }
+  };
+}
+
+function safeNumberFromBigInt(value){
+  if (typeof value === 'number') return value;
+  if (typeof value === 'bigint'){
+    const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+    if (value > maxSafe) return Number.MAX_SAFE_INTEGER;
+    return Number(value);
+  }
+  return 0;
 }
 
 async function handleImport(files){
@@ -984,32 +1067,47 @@ async function handleImport(files){
   const tasks = [];
   let total = 0;
 
+  const zipLibAvailable = !!(self.zip && self.zip.ZipReader && self.zip.BlobReader);
+
   for (const file of files){
     const name = file && file.name ? String(file.name) : 'file';
     const lowerName = name.toLowerCase();
     if (lowerName.endsWith('.zip')){
+      if (!zipLibAvailable){
+        failed.push({ name, reason: 'ZIP support unavailable' });
+        continue;
+      }
+      let zipReader = null;
       try {
-        const buffer = await file.arrayBuffer();
-        const zip = await JSZip.loadAsync(buffer);
+        zipReader = new self.zip.ZipReader(new self.zip.BlobReader(file), { useWebWorkers:false });
+        const rawEntries = await zipReader.getEntries();
         const entries = [];
         let order = 0;
-        zip.forEach(function(relativePath, entry){
-          if (entry.dir) return;
+        for (const entry of rawEntries){
+          if (!entry || entry.directory) continue;
+          const relativePath = entry.filename || entry.name || '';
           const baseName = relativePath.split('/').pop();
-          if (!baseName) return;
+          if (!baseName) continue;
           const lower = baseName.toLowerCase();
-          if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) return;
-          entries.push({ order: order++, entry: entry, name: baseName, lowerName: lower });
-        });
+          if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) continue;
+          entries.push({ order: order++, entry, name: baseName, lowerName: lower });
+        }
         entries.sort(function(a,b){ return a.order - b.order; });
+        if (!entries.length){
+          await zipReader.close();
+          continue;
+        }
         total += entries.length;
-        tasks.push({ type:'zip', entries: entries, zipName: name });
+        tasks.push({ type:'zip', entries, zipName: name, reader: zipReader });
       } catch (err){
-        failed.push({ name: name, reason: 'Unable to read ZIP archive' });
+        if (zipReader){
+          try { await zipReader.close(); } catch (_) {}
+        }
+        failed.push({ name, reason: 'Unable to read ZIP archive' });
       }
     } else {
       total += 1;
-      tasks.push({ type:'file', file: file, name: name, lowerName: lowerName });
+      tasks.push({ type:'file', file, name, lowerName });
     }
   }
 
@@ -1020,31 +1118,98 @@ async function handleImport(files){
     if (task.type === 'file'){
       try {
         const parsed = await parseBlobToTable(task.file);
-        results.push({ name: task.name, lowerName: task.lowerName, parsed: parsed });
+        results.push({ name: task.name, lowerName: task.lowerName, parsed });
       } catch (err){
         failed.push({ name: task.name, reason: 'Unable to read file' });
       }
       processed += 1;
       self.postMessage(buildProgressPayload(processed, total, task.name, 'Processed file'));
     } else if (task.type === 'zip'){
+      const labelBase = task.zipName ? 'Processing ZIP entry (' + task.zipName + ')' : 'Processing file';
       for (const entryInfo of task.entries){
+        const entry = entryInfo.entry;
+        const entrySize = entry && typeof entry.uncompressedSize !== 'undefined'
+          ? safeNumberFromBigInt(entry.uncompressedSize)
+          : (typeof entry.uncompressedSize64 !== 'undefined'
+              ? safeNumberFromBigInt(entry.uncompressedSize64)
+              : (typeof entry.compressedSize !== 'undefined'
+                  ? safeNumberFromBigInt(entry.compressedSize)
+                  : 0));
+        let bytesProcessed = 0;
+        let lastPercent = -1;
+        let lastBytesReported = 0;
+        const emitProgress = (processedBytes, percentOverride)=>{
+          const extra = {};
+          if (processedBytes != null) extra.entryProcessedBytes = processedBytes;
+          if (entrySize > 0) extra.entryTotalBytes = entrySize;
+          const percent = typeof percentOverride === 'number' && Number.isFinite(percentOverride)
+            ? percentOverride
+            : (entrySize > 0 && entrySize ? Math.floor((processedBytes / entrySize) * 100) : null);
+          if (percent != null && Number.isFinite(percent)){
+            extra.entryPercent = Math.min(100, Math.max(0, percent));
+          }
+          self.postMessage(buildProgressPayload(processed, total, entryInfo.name, labelBase, extra));
+        };
+        emitProgress(0, entrySize > 0 ? 0 : null);
+        let entrySucceeded = false;
         try {
-          const text = await entryInfo.entry.async('string');
-          const parsed = parseCSVText(text);
-          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed: parsed, sourceZip: task.zipName });
+          const writer = createStreamingCSVWriter({
+            onChunk(chunkLength){
+              if (!chunkLength) return;
+              bytesProcessed += chunkLength;
+              let shouldEmit = false;
+              let percent = null;
+              if (entrySize > 0){
+                percent = Math.floor((bytesProcessed / entrySize) * 100);
+                if (percent !== lastPercent){
+                  lastPercent = percent;
+                  shouldEmit = true;
+                }
+              } else if (bytesProcessed - lastBytesReported >= 524288){
+                lastBytesReported = bytesProcessed;
+                shouldEmit = true;
+              }
+              if (shouldEmit){
+                emitProgress(bytesProcessed, percent);
+              }
+            },
+            onComplete(){
+              emitProgress(bytesProcessed, 100);
+            }
+          });
+          if (!entry || typeof entry.getData !== 'function'){
+            throw new Error('Invalid ZIP entry');
+          }
+          const parsed = await entry.getData(writer);
+          if (!parsed || !parsed.headers){
+            throw new Error('Unable to parse entry');
+          }
+          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed, sourceZip: task.zipName });
+          entrySucceeded = true;
         } catch (err){
+          entrySucceeded = false;
           const failReason = task.zipName ? 'Unable to read file from ' + task.zipName : 'Unable to read file from ZIP';
           failed.push({ name: entryInfo.name, reason: failReason });
         }
         processed += 1;
-        const label = task.zipName ? 'Processed ZIP entry' : 'Processed file';
-        const info = task.zipName ? label + ' (' + task.zipName + ')' : label;
-        self.postMessage(buildProgressPayload(processed, total, entryInfo.name, info));
+        const label = task.zipName
+          ? (entrySucceeded ? 'Processed ZIP entry (' + task.zipName + ')' : 'Failed ZIP entry (' + task.zipName + ')')
+          : (entrySucceeded ? 'Processed file' : 'Failed file');
+        const finalExtra = {};
+        if (entrySucceeded){
+          finalExtra.entryPercent = 100;
+        }
+        if (bytesProcessed > 0) finalExtra.entryProcessedBytes = bytesProcessed;
+        if (entrySize > 0) finalExtra.entryTotalBytes = entrySize;
+        self.postMessage(buildProgressPayload(processed, total, entryInfo.name, label, finalExtra));
+      }
+      if (task.reader){
+        try { await task.reader.close(); } catch (_) {}
       }
     }
   }
 
-  self.postMessage({ type:'complete', results: results, failed: failed });
+  self.postMessage({ type:'complete', results, failed });
 }
 
 self.onmessage = function(event){
