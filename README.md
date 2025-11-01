@@ -1,6 +1,6 @@
 # GTFS Viewer (Pure HTML)
 
-A lightweight, browser-only GTFS viewer that loads standard GTFS `.txt` files so you can visualize tables, filter, sort, and more — no server, no build step, just open the HTML file.
+A lightweight, browser-only static GTFS viewer that loads standard GTFS `.txt` files so you can visualize tables, filter, sort, and more — no server, no build step, just open the HTML file.
 
 > **Why?** Sometimes you just want to inspect GTFS feeds quickly without installing tooling or spinning up a backend.
 
