@@ -188,7 +188,7 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.64/dist/zip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     // ===== Elements & state =====
     const tabsEl = document.getElementById('tabs');
@@ -851,7 +851,7 @@
 
     function createParserWorker(){
       const workerSource = String.raw`
-self.importScripts('https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.64/dist/zip.min.js');
+self.importScripts('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
 
 function createIncrementalCSVParser(){
   const rows=[];
@@ -978,39 +978,6 @@ function buildProgressPayload(processed, total, current, message){
   return { type:'progress', processed, total, current, message };
 }
 
-async function parseZipEntry(entry, progressCallback){
-  const reportProgress = typeof progressCallback === 'function' ? progressCallback : null;
-  const options = {};
-  if (reportProgress){
-    options.onprogress = function(done, totalBytes){
-      reportProgress(done, totalBytes);
-    };
-  }
-
-  if (typeof WritableStream === 'function' && typeof TextDecoder === 'function'){
-    const parser = createIncrementalCSVParser();
-    const decoder = new TextDecoder();
-    const stream = new WritableStream({
-      write(chunk){
-        if (!chunk) return;
-        const view = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
-        if (!view.length) return;
-        const text = decoder.decode(view, { stream:true });
-        if (text) parser.processChunk(text);
-      },
-      close(){
-        const text = decoder.decode();
-        if (text) parser.processChunk(text);
-      }
-    });
-    await entry.getData(new zip.WritableStreamWriter(stream), options);
-    return parser.finish();
-  }
-
-  const text = await entry.getData(new zip.TextWriter(), options);
-  return parseCSVText(text);
-}
-
 async function handleImport(files){
   const results = [];
   const failed = [];
@@ -1021,30 +988,23 @@ async function handleImport(files){
     const name = file && file.name ? String(file.name) : 'file';
     const lowerName = name.toLowerCase();
     if (lowerName.endsWith('.zip')){
-      let zipReader = null;
       try {
-        zipReader = new zip.ZipReader(new zip.BlobReader(file), { useWebWorkers:false });
-        const rawEntries = await zipReader.getEntries();
+        const buffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(buffer);
         const entries = [];
-        for (const entry of rawEntries){
-          if (!entry || entry.directory) continue;
-          const baseName = entry.filename.split('/').pop();
-          if (!baseName) continue;
+        let order = 0;
+        zip.forEach(function(relativePath, entry){
+          if (entry.dir) return;
+          const baseName = relativePath.split('/').pop();
+          if (!baseName) return;
           const lower = baseName.toLowerCase();
-          if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) continue;
-          entries.push({ path: entry.filename, name: baseName, lowerName: lower, size: entry.uncompressedSize });
-        }
-        await zipReader.close();
-        zipReader = null;
-        if (!entries.length){
-          continue;
-        }
+          if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) return;
+          entries.push({ order: order++, entry: entry, name: baseName, lowerName: lower });
+        });
+        entries.sort(function(a,b){ return a.order - b.order; });
         total += entries.length;
-        tasks.push({ type:'zip', file: file, entries: entries, zipName: name });
+        tasks.push({ type:'zip', entries: entries, zipName: name });
       } catch (err){
-        if (zipReader){
-          try { await zipReader.close(); } catch (closeErr) {}
-        }
         failed.push({ name: name, reason: 'Unable to read ZIP archive' });
       }
     } else {
@@ -1067,68 +1027,19 @@ async function handleImport(files){
       processed += 1;
       self.postMessage(buildProgressPayload(processed, total, task.name, 'Processed file'));
     } else if (task.type === 'zip'){
-      const zipLabelBase = task.zipName ? 'Streaming ZIP entry (' + task.zipName + ')' : 'Streaming ZIP entry';
-      let zipReader = null;
-      try {
-        zipReader = new zip.ZipReader(new zip.BlobReader(task.file), { useWebWorkers:false });
-        const rawEntries = await zipReader.getEntries();
-        const entryMap = new Map();
-        for (const entry of rawEntries){
-          if (entry && !entry.directory){
-            entryMap.set(entry.filename, entry);
-          }
-        }
-        for (const entryInfo of task.entries){
-          const entry = entryMap.get(entryInfo.path);
-          if (!entry){
-            const failReason = task.zipName ? 'Unable to read file from ' + task.zipName : 'Unable to read file from ZIP';
-            failed.push({ name: entryInfo.name, reason: failReason });
-            processed += 1;
-            const label = task.zipName ? 'Processed ZIP entry' : 'Processed file';
-            const info = task.zipName ? label + ' (' + task.zipName + ')' : label;
-            self.postMessage(buildProgressPayload(processed, total, entryInfo.name, info));
-            continue;
-          }
-
-          self.postMessage(buildProgressPayload(processed, total, entryInfo.name, zipLabelBase));
-          let lastPercent = -1;
-          const progressUpdater = function(done, totalBytes){
-            const maxBytes = (typeof totalBytes === 'number' && totalBytes > 0) ? totalBytes : (typeof entryInfo.size === 'number' ? entryInfo.size : 0);
-            if (!maxBytes || !isFinite(maxBytes) || maxBytes <= 0) return;
-            const percent = Math.floor((done / maxBytes) * 100);
-            if (percent === lastPercent) return;
-            lastPercent = percent;
-            const message = zipLabelBase + ' ' + percent + '%';
-            self.postMessage(buildProgressPayload(processed, total, entryInfo.name, message));
-          };
-
-          try {
-            const parsed = await parseZipEntry(entry, progressUpdater);
-            results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed: parsed, sourceZip: task.zipName });
-          } catch (err){
-            const failReason = task.zipName ? 'Unable to read file from ' + task.zipName : 'Unable to read file from ZIP';
-            failed.push({ name: entryInfo.name, reason: failReason });
-          }
-
-          if (lastPercent >= 0 && lastPercent < 100){
-            const message = zipLabelBase + ' 100%';
-            self.postMessage(buildProgressPayload(processed, total, entryInfo.name, message));
-          }
-
-          processed += 1;
-          const label = task.zipName ? 'Processed ZIP entry' : 'Processed file';
-          const info = task.zipName ? label + ' (' + task.zipName + ')' : label;
-          self.postMessage(buildProgressPayload(processed, total, entryInfo.name, info));
-        }
-      } catch (err){
-        const failReason = task.zipName ? 'Unable to read files from ' + task.zipName : 'Unable to read files from ZIP';
-        for (const entryInfo of task.entries){
+      for (const entryInfo of task.entries){
+        try {
+          const text = await entryInfo.entry.async('string');
+          const parsed = parseCSVText(text);
+          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed: parsed, sourceZip: task.zipName });
+        } catch (err){
+          const failReason = task.zipName ? 'Unable to read file from ' + task.zipName : 'Unable to read file from ZIP';
           failed.push({ name: entryInfo.name, reason: failReason });
         }
-      } finally {
-        if (zipReader){
-          try { await zipReader.close(); } catch (closeErr) {}
-        }
+        processed += 1;
+        const label = task.zipName ? 'Processed ZIP entry' : 'Processed file';
+        const info = task.zipName ? label + ' (' + task.zipName + ')' : label;
+        self.postMessage(buildProgressPayload(processed, total, entryInfo.name, info));
       }
     }
   }
