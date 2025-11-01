@@ -878,6 +878,10 @@ function createIncrementalCSVParser(){
           awaitingSecondQuote=false;
           inQ=false;
         }
+        if (!inQ && cur.length===0 && ch=='\ufeff'){
+          i++;
+          continue;
+        }
         if (ch=='\r'){
           skipNextLF=true;
           ch='\n';
@@ -930,7 +934,9 @@ function createIncrementalCSVParser(){
         rows.push(row);
       }
       if (!rows.length) return { headers:[], rows:[] };
-      const headers = rows.shift();
+      const headersRaw = rows.shift();
+      const sanitizeHeader = value => typeof value==='string' ? value.replace(/^\ufeff/, '') : value;
+      const headers = headersRaw.map(sanitizeHeader);
       const norm = rows.map(r => r.length<headers.length ? r.concat(Array(headers.length-r.length).fill('')) : r);
       return { headers, rows:norm };
     }
