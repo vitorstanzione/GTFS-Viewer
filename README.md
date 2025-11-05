@@ -6,7 +6,7 @@ A lightweight, browser-only static GTFS viewer that loads standard GTFS `.txt` f
 
 ## Features
 - 🔍 View static GTFS tables directly in your browser
-- 🔄 Client-side filtering, sorting, and (optionally) multi-column sort
+- 🔄 Client-side filtering and single-column sorting on every table
 - 📁 Works with individual `.txt` files or a `.zip` of a GTFS feed
 - 📊 “OD time table” view (requires `routes.txt`, `trips.txt`, and `stop_times.txt`)
 - 🎨 Route/brand colors rendered from `route_color` / `route_text_color` when valid
