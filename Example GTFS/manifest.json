@@ -2,7 +2,7 @@
   "files": [
     {
       "name": "sample-feed.zip",
-      "label": "sample-feed.zip",
+      "label": "Sample feed (ZIP)",
       "description": "Small sample GTFS bundle packaged as a ZIP archive."
     }
   ]
