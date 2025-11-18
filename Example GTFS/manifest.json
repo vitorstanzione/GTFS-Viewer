@@ -3,7 +3,12 @@
     {
       "name": "sample-feed.zip",
       "label": "sample-feed.zip",
-      "description": "Small sample GTFS bundle packaged as a ZIP archive."
+      "description": "Small sample GTFS bundle packaged provided by Google."
+    },
+    {
+      "name": "Public Transport Victoria.zip",
+      "label": "Public Transport Victoria.zip",
+      "description": "Real data from Public Transport Victoria."
     }
   ]
 }
