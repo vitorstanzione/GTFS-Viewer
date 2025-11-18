@@ -94,6 +94,8 @@
     .about-body p strong{color:var(--text)}
     .about-body a{color:#7bb8ff;text-decoration:none}
     .about-body a:hover{text-decoration:underline}
+    .sample-link{color:#7bb8ff;font-weight:700;text-decoration:none}
+    .sample-link:hover{text-decoration:underline}
     .sample-list{display:grid;gap:10px;margin:12px 0}
     .sample-option{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);padding:10px;border-radius:10px;background:rgba(255,255,255,.02);cursor:pointer;transition:.15s ease}
     .sample-option:hover{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.06),rgba(34,211,238,.06))}
@@ -118,13 +120,14 @@
           <input id="fileInput" type="file" accept=".txt,.csv,.geojson,.zip" multiple />
           <div class="file-trigger">
             <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
-            <button class="btn" id="sampleBtn" type="button">Load sample feed</button>
             <button class="btn primary" id="clearBtn" title="Clear tables & start over">Clear</button>
             <span class="hint">You can also drag & drop files anywhere in this panel.</span>
           </div>
           <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Frequencies, Routes, Shapes, Stop times, Stops, Transfers, Trips, and OD time table (derived). URLs become clickable; color fields render as swatches.</div>
           <div class="hint">Real-world note: imports around 30&nbsp;MB have worked so far; a 60&nbsp;MB feed currently fails to finish; another with 80&nbsp;MB worked smoothly.</div>
-          <div class="hint">The <strong>missing-file validation</strong> checks whether required/forbidden files are present for the scenario, but it doesn’t yet look at headers, field formats, or the file contents themselves.</div>
+          <div class="hint">The <strong>missing-file validation</strong> checks whether required/forbidden files are present for the scenario, but it doesn’t yet look at headers, field formats, or the file contents themselves.<br />
+            <a id="sampleLink" class="sample-link" href="#">Load sample feed</a>
+          </div>
           <div id="selectedFiles"></div>
           <div id="importStatus" class="pill" hidden aria-live="polite"></div>
           <div id="failedFiles" class="fail-box" hidden>
@@ -288,7 +291,7 @@
 
     const fileInput = document.getElementById('fileInput');
     const chooseBtn = document.getElementById('chooseBtn');
-    const sampleBtn = document.getElementById('sampleBtn');
+    const sampleLink = document.getElementById('sampleLink');
     const clearBtn = document.getElementById('clearBtn');
     const sampleListEl = document.getElementById('sampleList');
     const sampleLoadBtn = document.getElementById('sampleLoadBtn');
@@ -645,7 +648,8 @@
       }
     }
 
-    sampleBtn?.addEventListener('click', async () => {
+    sampleLink?.addEventListener('click', async (event) => {
+      event.preventDefault();
       if (importInProgress || sampleLoading) return;
       try {
         const manifest = await ensureSampleManifest();
@@ -653,7 +657,7 @@
         if (sampleLoadBtn){
           sampleLoadBtn.disabled = !manifest.length;
         }
-        openModal(sampleModal, sampleBtn);
+        openModal(sampleModal, sampleLink);
       } catch (err) {
         alert('Unable to load the sample feed list. Please try again.');
       }
