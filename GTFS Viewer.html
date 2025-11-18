@@ -295,7 +295,7 @@
     const sampleCancelBtn = document.getElementById('sampleCancelBtn');
     const sampleErrorEl = document.getElementById('sampleError');
     const sampleErrorText = document.getElementById('sampleErrorText');
-    const SAMPLE_ROOT = 'Example%20GTFS/';
+    const SAMPLE_ROOT = new URL('./Example GTFS/', window.location.href);
 
     function resetValidationCard(){
       if (!validationCard || !validationTableBody) return;
@@ -557,7 +557,8 @@
       try {
         sampleLoading = true;
         setSampleError('');
-        const response = await fetch(`${SAMPLE_ROOT}manifest.json`, { cache:'no-store' });
+        const manifestUrl = new URL('manifest.json', SAMPLE_ROOT);
+        const response = await fetch(manifestUrl, { cache:'no-store' });
         if (!response.ok){
           throw new Error(`Request failed: ${response.status}`);
         }
@@ -594,7 +595,7 @@
         sampleLoadBtn.setAttribute('aria-busy','true');
       }
       try {
-        const url = `${SAMPLE_ROOT}${encodeURIComponent(name)}`;
+        const url = new URL(name, SAMPLE_ROOT);
         const response = await fetch(url);
         if (!response.ok){
           throw new Error(`Failed to fetch sample: ${response.status}`);
