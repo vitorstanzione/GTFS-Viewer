@@ -399,6 +399,7 @@
     const aboutModal = document.getElementById('aboutModal');
     const sampleModal = document.getElementById('sampleModal');
     const aboutClose = aboutModal?.querySelector('.modal-close');
+    const sampleClose = sampleModal?.querySelector('.modal-close');
     const backgroundEls = Array.from(document.querySelectorAll('body > :not(#aboutModal):not(#sampleModal)'))
       .filter(el => el.tagName !== 'SCRIPT');
     const focusableSelectors = [
@@ -490,6 +491,7 @@
     }
 
     aboutClose?.addEventListener('click', closeAboutModal);
+    sampleClose?.addEventListener('click', closeSampleModal);
     aboutModal?.addEventListener('keydown', handleModalKeydown);
     sampleModal?.addEventListener('keydown', handleModalKeydown);
     aboutModal?.addEventListener('click', event => {
