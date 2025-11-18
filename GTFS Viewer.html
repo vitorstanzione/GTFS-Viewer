@@ -94,6 +94,12 @@
     .about-body p strong{color:var(--text)}
     .about-body a{color:#7bb8ff;text-decoration:none}
     .about-body a:hover{text-decoration:underline}
+    .sample-list{display:grid;gap:10px;margin:12px 0}
+    .sample-option{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);padding:10px;border-radius:10px;background:rgba(255,255,255,.02)}
+    .sample-option input{margin-top:4px}
+    .sample-option strong{color:var(--text)}
+    .sample-option small{display:block;color:var(--muted)}
+    .sample-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
   </style>
 </head>
 <body>
@@ -110,6 +116,7 @@
           <input id="fileInput" type="file" accept=".txt,.csv,.geojson,.zip" multiple />
           <div class="file-trigger">
             <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
+            <button class="btn" id="sampleBtn" type="button">Load sample feed</button>
             <button class="btn primary" id="importBtn">Import</button>
             <button class="btn primary" id="clearBtn" title="Clear tables & start over">Clear</button>
             <span class="hint">You can also drag & drop files anywhere in this panel.</span>
@@ -192,6 +199,23 @@
   </div>
 </div>
 
+<div id="sampleModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="sampleTitle" tabindex="-1">
+  <div class="modal-dialog">
+    <button type="button" class="modal-close" aria-label="Close sample dialog">×</button>
+    <h2 id="sampleTitle">Load sample feed</h2>
+    <p class="hint">Select a file from the bundled "Example GTFS" folder.</p>
+    <div id="sampleList" class="sample-list" role="radiogroup" aria-labelledby="sampleTitle"></div>
+    <div id="sampleError" class="fail-box" hidden>
+      <h3>Unable to load sample</h3>
+      <div id="sampleErrorText"></div>
+    </div>
+    <div class="sample-actions">
+      <button class="btn primary" type="button" id="sampleLoadBtn">Use selected file</button>
+      <button class="btn" type="button" id="sampleCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     // ===== Elements & state =====
@@ -263,8 +287,15 @@
 
     const fileInput = document.getElementById('fileInput');
     const chooseBtn = document.getElementById('chooseBtn');
+    const sampleBtn = document.getElementById('sampleBtn');
     const importBtn = document.getElementById('importBtn');
     const clearBtn = document.getElementById('clearBtn');
+    const sampleListEl = document.getElementById('sampleList');
+    const sampleLoadBtn = document.getElementById('sampleLoadBtn');
+    const sampleCancelBtn = document.getElementById('sampleCancelBtn');
+    const sampleErrorEl = document.getElementById('sampleError');
+    const sampleErrorText = document.getElementById('sampleErrorText');
+    const SAMPLE_ROOT = 'Example%20GTFS/';
 
     function resetValidationCard(){
       if (!validationCard || !validationTableBody) return;
@@ -290,6 +321,8 @@
     let importInProgress = false;
     let importStatusHideTimer = null;
     let parserWorker = null;
+    let sampleManifest = null;
+    let sampleLoading = false;
 
     initParserWorker();
 
@@ -369,8 +402,9 @@
     }
 
     const aboutModal = document.getElementById('aboutModal');
+    const sampleModal = document.getElementById('sampleModal');
     const aboutClose = aboutModal?.querySelector('.modal-close');
-    const backgroundEls = Array.from(document.querySelectorAll('body > :not(#aboutModal)'))
+    const backgroundEls = Array.from(document.querySelectorAll('body > :not(#aboutModal):not(#sampleModal)'))
       .filter(el => el.tagName !== 'SCRIPT');
     const focusableSelectors = [
       'a[href]',
@@ -381,6 +415,7 @@
       '[tabindex]:not([tabindex="-1"])'
     ].join(',');
     let lastFocusedElement = null;
+    let activeModal = null;
 
     function setBackgroundInert(state){
       backgroundEls.forEach(el => {
@@ -399,24 +434,28 @@
         .filter(el => el.offsetParent !== null || el === document.activeElement);
     }
 
-    function openAboutModal(trigger){
-      if (!aboutModal) return;
+    function openModal(modal, trigger){
+      if (!modal) return;
       const triggerElement = trigger instanceof HTMLElement ? trigger : document.activeElement;
       if (triggerElement instanceof HTMLElement){
         lastFocusedElement = triggerElement;
       }
       setBackgroundInert(true);
-      aboutModal.hidden = false;
-      const focusable = getFocusableElements(aboutModal);
+      modal.hidden = false;
+      activeModal = modal;
+      const focusable = getFocusableElements(modal);
       if (focusable.length){
         focusable[0].focus();
       } else {
-        aboutModal.focus();
+        modal.focus();
       }
     }
-    function closeAboutModal(){
-      if (!aboutModal) return;
-      aboutModal.hidden = true;
+    function closeModal(modal){
+      if (!modal) return;
+      modal.hidden = true;
+      if (activeModal === modal){
+        activeModal = null;
+      }
       setBackgroundInert(false);
       if (lastFocusedElement && typeof lastFocusedElement.focus === 'function'){
         lastFocusedElement.focus();
@@ -424,13 +463,17 @@
       lastFocusedElement = null;
     }
 
-    function handleAboutModalKeydown(event){
-      if (!aboutModal || aboutModal.hidden) return;
+    function openAboutModal(trigger){ openModal(aboutModal, trigger); }
+    function closeAboutModal(){ closeModal(aboutModal); }
+    function closeSampleModal(){ closeModal(sampleModal); }
+
+    function handleModalKeydown(event){
+      if (!activeModal || activeModal.hidden) return;
       if (event.key !== 'Tab') return;
-      const focusable = getFocusableElements(aboutModal);
+      const focusable = getFocusableElements(activeModal);
       if (!focusable.length){
         event.preventDefault();
-        aboutModal.focus();
+        activeModal.focus();
         return;
       }
       const currentIndex = focusable.indexOf(document.activeElement);
@@ -452,15 +495,151 @@
     }
 
     aboutClose?.addEventListener('click', closeAboutModal);
-    aboutModal?.addEventListener('keydown', handleAboutModalKeydown);
+    aboutModal?.addEventListener('keydown', handleModalKeydown);
+    sampleModal?.addEventListener('keydown', handleModalKeydown);
     aboutModal?.addEventListener('click', event => {
       if (event.target === aboutModal) closeAboutModal();
     });
+    sampleModal?.addEventListener('click', event => {
+      if (event.target === sampleModal) closeSampleModal();
+    });
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && !aboutModal?.hidden){
-        closeAboutModal();
+      if (event.key === 'Escape' && activeModal && !activeModal.hidden){
+        closeModal(activeModal);
       }
     });
+
+
+    // ===== Sample feed handling =====
+    function setSampleError(message){
+      if (!sampleErrorEl || !sampleErrorText) return;
+      if (!message){
+        sampleErrorEl.hidden = true;
+        sampleErrorText.textContent = '';
+        return;
+      }
+      sampleErrorText.textContent = message;
+      sampleErrorEl.hidden = false;
+    }
+
+    function renderSampleOptions(files){
+      if (!sampleListEl) return;
+      sampleListEl.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      files.forEach((file, idx) => {
+        const option = document.createElement('label');
+        option.className = 'sample-option';
+
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'sampleFile';
+        radio.value = file.name;
+        radio.checked = idx === 0;
+
+        const textWrap = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = file.label || file.name;
+        textWrap.appendChild(title);
+        if (file.description){
+          const desc = document.createElement('small');
+          desc.textContent = file.description;
+          textWrap.appendChild(desc);
+        }
+
+        option.append(radio, textWrap);
+        frag.appendChild(option);
+      });
+      sampleListEl.appendChild(frag);
+    }
+
+    async function ensureSampleManifest(){
+      if (sampleManifest) return sampleManifest;
+      try {
+        sampleLoading = true;
+        setSampleError('');
+        const response = await fetch(`${SAMPLE_ROOT}manifest.json`, { cache:'no-store' });
+        if (!response.ok){
+          throw new Error(`Request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        const files = Array.isArray(data?.files) ? data.files.filter(f => f && f.name) : [];
+        if (!files.length){
+          throw new Error('No files listed in sample manifest.');
+        }
+        sampleManifest = files.map(file => ({
+          name: String(file.name),
+          label: file.label || file.name,
+          description: file.description || ''
+        }));
+        return sampleManifest;
+      } catch (err) {
+        console.error('Failed to load sample manifest', err);
+        setSampleError('Could not load sample files from the bundled Example GTFS folder.');
+        throw err;
+      } finally {
+        sampleLoading = false;
+      }
+    }
+
+    function getSelectedSampleName(){
+      const checked = sampleListEl?.querySelector('input[name="sampleFile"]:checked');
+      return checked ? checked.value : '';
+    }
+
+    async function stageSampleFile(name){
+      if (!name) return;
+      setSampleError('');
+      if (sampleLoadBtn){
+        sampleLoadBtn.disabled = true;
+        sampleLoadBtn.setAttribute('aria-busy','true');
+      }
+      try {
+        const url = `${SAMPLE_ROOT}${encodeURIComponent(name)}`;
+        const response = await fetch(url);
+        if (!response.ok){
+          throw new Error(`Failed to fetch sample: ${response.status}`);
+        }
+        const blob = await response.blob();
+        const sampleFile = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+        stagedFiles = [sampleFile];
+        fileInput.value = '';
+        renderSelectedFiles();
+        closeSampleModal();
+        updateImportStatus('Sample file added. Click Import to load it.');
+      } catch (err) {
+        console.error('Failed to fetch sample file', err);
+        setSampleError('Could not download the selected sample file.');
+      } finally {
+        if (sampleLoadBtn){
+          sampleLoadBtn.disabled = false;
+          sampleLoadBtn.removeAttribute('aria-busy');
+        }
+      }
+    }
+
+    sampleBtn?.addEventListener('click', async () => {
+      if (importInProgress || sampleLoading) return;
+      try {
+        const manifest = await ensureSampleManifest();
+        renderSampleOptions(manifest);
+        if (sampleLoadBtn){
+          sampleLoadBtn.disabled = !manifest.length;
+        }
+        openModal(sampleModal, sampleBtn);
+      } catch (err) {
+        alert('Unable to load the sample feed list. Please try again.');
+      }
+    });
+    sampleLoadBtn?.addEventListener('click', async () => {
+      if (importInProgress) return;
+      const selected = getSelectedSampleName();
+      if (!selected){
+        setSampleError('Select a sample file to continue.');
+        return;
+      }
+      await stageSampleFile(selected);
+    });
+    sampleCancelBtn?.addEventListener('click', closeSampleModal);
 
     // ===== File handling =====
     function handleDrop(ev) {

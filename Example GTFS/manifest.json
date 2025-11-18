@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "name": "sample-feed.zip",
+      "label": "sample-feed.zip",
+      "description": "Small sample GTFS bundle packaged as a ZIP archive."
+    }
+  ]
+}
