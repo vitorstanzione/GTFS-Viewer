@@ -112,7 +112,6 @@
             <button class="btn primary" id="chooseBtn" type="button">Choose files</button>
             <button class="btn primary" id="importBtn">Import</button>
             <button class="btn primary" id="clearBtn" title="Clear tables & start over">Clear</button>
-            <button class="btn primary" id="loadSampleBtn" type="button">Load sample feed</button>
             <span class="hint">You can also drag & drop files anywhere in this panel.</span>
           </div>
           <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Frequencies, Routes, Shapes, Stop times, Stops, Transfers, Trips, and OD time table (derived). URLs become clickable; color fields render as swatches.</div>
@@ -266,54 +265,6 @@
     const chooseBtn = document.getElementById('chooseBtn');
     const importBtn = document.getElementById('importBtn');
     const clearBtn = document.getElementById('clearBtn');
-    const loadSampleBtn = document.getElementById('loadSampleBtn');
-    const SAMPLE_FEED_BASE64 = `
-    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
-    `;
 
     function resetValidationCard(){
       if (!validationCard || !validationTableBody) return;
@@ -341,18 +292,6 @@
     let parserWorker = null;
 
     initParserWorker();
-
-    function resetAppState(statusText=''){
-      stagedFiles=[]; fileInput.value='';
-      renderSelectedFiles();
-      Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; delete el.dataset.available; delete el.dataset.fastMode; });
-      if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
-      parsedData={}; failedImports=[]; fastModeConfig={}; loadedFileNames.clear();
-      renderFailedFiles(failedImports);
-      updateValidationReport();
-      updateImportStatus(statusText);
-      showContent('home');
-    }
 
     function updateImportButtonState(){
       if (!importBtn) return;
@@ -552,12 +491,15 @@
     });
     clearBtn.addEventListener('click', () => {
       if (importInProgress) return;
-      resetAppState('');
-    });
-
-    loadSampleBtn?.addEventListener('click', async () => {
-      if (importInProgress) return;
-      await loadSampleFeed();
+      stagedFiles=[]; fileInput.value='';
+      renderSelectedFiles();
+      Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; delete el.dataset.available; delete el.dataset.fastMode; });
+      if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
+      parsedData={}; failedImports=[]; fastModeConfig={}; loadedFileNames.clear();
+      renderFailedFiles(failedImports);
+      updateValidationReport();
+      updateImportStatus('');
+      showContent('home');
     });
 
     function renderSelectedFiles(){
@@ -570,33 +512,6 @@
       updateImportButtonState();
     }
     function formatSize(bytes){ if(bytes<1024)return `${bytes} B`; const kb=bytes/1024; if(kb<1024)return `${kb.toFixed(1)} KB`; const mb=kb/1024; return `${mb.toFixed(2)} MB`; }
-
-    async function loadSampleFeed(){
-      resetAppState('Preparing sample feed...');
-      try {
-        const cleanedBase64 = (SAMPLE_FEED_BASE64 || '').replace(/\s+/g, '');
-        if (!cleanedBase64){
-          throw new Error('Embedded sample feed is unavailable.');
-        }
-        const zip = await JSZip.loadAsync(cleanedBase64, { base64:true });
-        const entries = Object.values(zip.files || {}).filter(f => f && !f.dir);
-        if (!entries.length){
-          throw new Error('Sample feed is empty.');
-        }
-        const files = [];
-        for (const entry of entries){
-          const content = await entry.async('uint8array');
-          files.push(new File([content], entry.name, { type:'text/plain' }));
-        }
-        stagedFiles = files;
-        renderSelectedFiles();
-        await importSelectedFiles(stagedFiles);
-      } catch (err){
-        console.error('Failed to load sample feed', err);
-        alert(`Failed to load sample feed: ${err?.message || err}`);
-        resetAppState('');
-      }
-    }
 
     function registerLoadedFile(def, actualName){
       if (!def) return;
