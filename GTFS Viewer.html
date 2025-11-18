@@ -560,6 +560,12 @@
           textWrap.appendChild(desc);
         }
 
+        if (Number.isFinite(file.size)){
+          const size = document.createElement('small');
+          size.textContent = `Size: ${formatSize(file.size)}`;
+          textWrap.appendChild(size);
+        }
+
         option.append(radio, textWrap);
         option.addEventListener('click', () => handleSelect(option));
         option.addEventListener('keydown', event => {
@@ -599,7 +605,8 @@
         sampleManifest = files.map(file => ({
           name: String(file.name),
           label: file.label || file.name,
-          description: file.description || ''
+          description: file.description || '',
+          size: Number.isFinite(Number(file.size)) ? Number(file.size) : undefined
         }));
         return sampleManifest;
       } catch (err) {
