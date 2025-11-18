@@ -95,8 +95,10 @@
     .about-body a{color:#7bb8ff;text-decoration:none}
     .about-body a:hover{text-decoration:underline}
     .sample-list{display:grid;gap:10px;margin:12px 0}
-    .sample-option{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);padding:10px;border-radius:10px;background:rgba(255,255,255,.02)}
-    .sample-option input{margin-top:4px}
+    .sample-option{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);padding:10px;border-radius:10px;background:rgba(255,255,255,.02);cursor:pointer;transition:.15s ease}
+    .sample-option:hover{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.06),rgba(34,211,238,.06))}
+    .sample-option.selected{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.12),rgba(34,211,238,.12));box-shadow:0 0 0 1px rgba(42,58,77,.6)}
+    .sample-option input{position:absolute;opacity:0;pointer-events:none}
     .sample-option strong{color:var(--text)}
     .sample-option small{display:block;color:var(--muted)}
     .sample-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
@@ -526,9 +528,25 @@
       if (!sampleListEl) return;
       sampleListEl.innerHTML = '';
       const frag = document.createDocumentFragment();
+
+      const handleSelect = (selectedEl) => {
+        sampleListEl.querySelectorAll('.sample-option').forEach(option => {
+          option.classList.toggle('selected', option === selectedEl);
+          const input = option.querySelector('input[name="sampleFile"]');
+          if (input){
+            input.checked = option === selectedEl;
+            option.setAttribute('aria-checked', input.checked ? 'true' : 'false');
+            option.tabIndex = input.checked ? 0 : -1;
+          }
+        });
+      };
+
       files.forEach((file, idx) => {
         const option = document.createElement('label');
         option.className = 'sample-option';
+        option.dataset.name = file.name;
+        option.role = 'radio';
+        option.tabIndex = idx === 0 ? 0 : -1;
 
         const radio = document.createElement('input');
         radio.type = 'radio';
@@ -547,8 +565,23 @@
         }
 
         option.append(radio, textWrap);
+        option.addEventListener('click', () => handleSelect(option));
+        option.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' '){
+            event.preventDefault();
+            handleSelect(option);
+          }
+        });
         frag.appendChild(option);
+
+        if (radio.checked){
+          option.classList.add('selected');
+          option.setAttribute('aria-checked', 'true');
+        } else {
+          option.setAttribute('aria-checked', 'false');
+        }
       });
+
       sampleListEl.appendChild(frag);
     }
 
@@ -583,6 +616,8 @@
     }
 
     function getSelectedSampleName(){
+      const selectedOption = sampleListEl?.querySelector('.sample-option.selected');
+      if (selectedOption) return selectedOption.dataset.name || '';
       const checked = sampleListEl?.querySelector('input[name="sampleFile"]:checked');
       return checked ? checked.value : '';
     }
