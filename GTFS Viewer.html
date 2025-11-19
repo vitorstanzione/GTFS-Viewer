@@ -149,6 +149,9 @@
     .about-body a{color:var(--accent);text-decoration:none}
     .about-body a:visited{color:var(--accent)}
     .about-body a:hover{text-decoration:underline}
+    .theme-toggle{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .theme-toggle .btn{flex:1;min-width:0;display:inline-flex;justify-content:center;font-weight:700}
+    .theme-toggle .btn.active{background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 18%, transparent),color-mix(in srgb, var(--accent-2) 18%, transparent));color:var(--text);border-color:color-mix(in srgb, var(--accent) 65%, var(--border))}
     .sample-link{color:var(--accent);font-weight:700;text-decoration:none}
     .sample-link:hover{text-decoration:underline}
     .sample-list{display:grid;gap:10px;margin:12px 0}
@@ -258,6 +261,11 @@
       <p><strong>License:</strong><br />This project is public domain (The Unlicense).<br />You can copy or modify it freely in your own copy.</p>
       <p><strong>Credits:</strong><br />Created with ❤️ by <a href="https://www.linkedin.com/in/vitorstanzione/" target="_blank" rel="noopener noreferrer">Vítor Stanzione</a>, using <strong>OpenAI Codex</strong>.</p>
       <p><strong>Version:</strong><br />First version: <strong>2025.10.30</strong><br />Current version: <strong>2025.11.19</strong></p>
+      <div class="theme-toggle" role="group" aria-label="Theme selection">
+        <button class="btn" type="button" id="themeAutoBtn">Auto</button>
+        <button class="btn" type="button" id="themeDarkBtn">Dark</button>
+        <button class="btn" type="button" id="themeLightBtn">Light</button>
+      </div>
     </div>
   </div>
 </div>
@@ -290,13 +298,39 @@
 
     // ===== Theme =====
     const themePreference = window.matchMedia('(prefers-color-scheme: dark)');
-    function applyTheme(theme){
+    const themeButtons = {
+      auto: document.getElementById('themeAutoBtn'),
+      dark: document.getElementById('themeDarkBtn'),
+      light: document.getElementById('themeLightBtn')
+    };
+    const themeStorageKey = 'gtfs-viewer-theme';
+    let themeMode = localStorage.getItem(themeStorageKey) || 'auto';
+
+    function applyTheme(mode){
+      themeMode = ['dark', 'light'].includes(mode) ? mode : 'auto';
+      const theme = themeMode === 'auto'
+        ? (themePreference.matches ? 'dark' : 'light')
+        : themeMode;
       document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+      Object.entries(themeButtons).forEach(([key, btn]) => {
+        if (!btn) return;
+        btn.classList.toggle('active', key === themeMode);
+        btn.setAttribute('aria-pressed', key === themeMode ? 'true' : 'false');
+      });
     }
-    applyTheme(themePreference.matches ? 'dark' : 'light');
-    themePreference.addEventListener('change', (event) => {
-      applyTheme(event.matches ? 'dark' : 'light');
+
+    function setTheme(mode){
+      applyTheme(mode);
+      localStorage.setItem(themeStorageKey, themeMode);
+    }
+
+    applyTheme(themeMode);
+    themePreference.addEventListener('change', () => {
+      if (themeMode === 'auto') applyTheme('auto');
     });
+    themeButtons.auto?.addEventListener('click', () => setTheme('auto'));
+    themeButtons.dark?.addEventListener('click', () => setTheme('dark'));
+    themeButtons.light?.addEventListener('click', () => setTheme('light'));
 
     const FILE_DEFS = [
       { file:'agency.txt', key:'agency', label:'Agency' },
