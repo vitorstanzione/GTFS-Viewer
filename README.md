@@ -1,3 +1,11 @@
+<p align="center">
+  <a href="https://gtfs.stanzione.com.br/" target="_blank"><strong>▶ Click here for a deployed page</strong></a>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vitorstanzione/GTFS-Viewer/main/favicon/android-chrome-512x512.png" width="128">
+</p>
+
 # GTFS Viewer (Pure HTML)
 
 A lightweight, browser-only static GTFS viewer that loads standard GTFS `.txt` files so you can visualize tables, filter, sort, and more — no server, no build step, just open the HTML file.
