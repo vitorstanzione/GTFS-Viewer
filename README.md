@@ -67,6 +67,6 @@ If you’d like to build upon it, feel free to fork it or clone it and create yo
 You don’t need permission — just give credit if you want to.
 
 ## License
-This project is released under **The Unlicense** (public domain).  
-You’re free to copy, modify, and use it in your own projects.  
+This project is released under the **MIT License**.
+You’re free to copy, modify, and use it in your own projects subject to the license terms.
 See [`LICENSE`](./LICENSE) for details.
