@@ -64,7 +64,7 @@ At minimum, the app can show any static GTFS table you provide. Some features ne
 ## Contributing
 This repository does **not accept pull requests or direct changes**.
 If you’d like to build upon it, feel free to fork it or clone it and create your own version.
-You don’t need permission — just give credit if you want to.
+You don’t need permission — just give credit.
 
 ## License
 This project is released under the **MIT License**.
