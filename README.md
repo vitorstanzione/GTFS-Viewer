@@ -23,10 +23,7 @@ At minimum, the app can show any static GTFS table you provide. Some features ne
 1. Download `GTFS Viewer.html` file.
 2. Open `GTFS Viewer.html` in your browser (double-click is fine).
 3. Click on "Choose files" and select GTFS `.txt` files (or a `.zip` containing them).
-4. Click on "Import".
-5. Start exploring.
-
-> Tip: If your browser blocks local file access for some features, serve the folder with a tiny static server (e.g., `python -m http.server 8000`) and open `http://localhost:8000`.
+4. Start exploring.
 
 ## Usage Notes
 - You can load a full `.zip` feed or select individual `.txt` files.
@@ -38,7 +35,6 @@ At minimum, the app can show any static GTFS table you provide. Some features ne
 ## Roadmap / Ideas
 - Multi-column sorting (Shift+Click)
 - Column show/hide and re-order
-- Persistent filters (saved in localStorage)
 - Basic charts (e.g., trips per route, stops per route)
 - Keyboard navigation and accessibility improvements
 - Very large feed optimization (virtualized tables)
