@@ -1,13 +1,61 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GTFS Viewer</title>
   <style>
-    :root { --bg:#0b0f14; --card:#121821; --muted:#8fa3b8; --text:#e7edf3; --border:#1f2937; }
+    :root {
+      color-scheme: light;
+      --bg:#f7f9fc;
+      --card:#ffffff;
+      --muted:#4b5563;
+      --text:#0f172a;
+      --border:#d7dce3;
+      --surface:#eef2f7;
+      --table-head:#eef2f7;
+      --row-hover:rgba(15,21,32,.04);
+      --accent:#2563eb;
+      --accent-2:#22d3ee;
+      --button:#f3f6fb;
+      --button-disabled:#f3f4f6;
+      --button-disabled-border:#e5e7eb;
+      --button-disabled-text:#9ca3af;
+      --pill-bg:#f3f6fb;
+      --pill-text:#4b5563;
+      --input-bg:#ffffff;
+      --input-placeholder:#9ca3af;
+      --kbd:#4338ca;
+      --fail-heading:#b91c1c;
+      --fail-text:#991b1b;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg:#0b0f14;
+      --card:#121821;
+      --muted:#8fa3b8;
+      --text:#e7edf3;
+      --border:#1f2937;
+      --surface:#0f1520;
+      --table-head:#0f1520;
+      --row-hover:rgba(255,255,255,.03);
+      --accent:#4da3ff;
+      --accent-2:#22d3ee;
+      --button:#0f1520;
+      --button-disabled:#080d17;
+      --button-disabled-border:#111826;
+      --button-disabled-text:#57667a;
+      --pill-bg:#0f1520;
+      --pill-text:#8fa3b8;
+      --input-bg:#0f1520;
+      --input-placeholder:#6b7b8f;
+      --kbd:#c7d2fe;
+      --fail-heading:#fca5a5;
+      --fail-text:#f8d7da;
+    }
     *{box-sizing:border-box}
-    body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;background:radial-gradient(1200px 1200px at 10% -10%,rgba(77,163,255,.08),transparent),radial-gradient(1000px 800px at 110% 10%,rgba(34,211,238,.08),transparent),var(--bg);color:var(--text);min-height:100vh}
+    body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;background:radial-gradient(1200px 1200px at 10% -10%,color-mix(in srgb, var(--accent) 15%, transparent),transparent),radial-gradient(1000px 800px at 110% 10%,color-mix(in srgb, var(--accent-2) 15%, transparent),transparent),var(--bg);color:var(--text);min-height:100vh}
     header{padding:10px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
     header h1{margin:0;font-size:18px;letter-spacing:.2px}
     .brand-title{display:flex;align-items:center;gap:10px}
@@ -20,9 +68,9 @@
     .tab-group{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
     .tab-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);opacity:.8}
     .tab-btn{appearance:none;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;transition:.15s ease;font-weight:600}
-    .tab-btn.active{background:linear-gradient(135deg,rgba(77,163,255,.12),rgba(34,211,238,.12));color:#e7edf3;border-color:#2a3a4d}
+    .tab-btn.active{background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 18%, transparent),color-mix(in srgb, var(--accent-2) 18%, transparent));color:var(--text);border-color:color-mix(in srgb, var(--accent) 65%, var(--border))}
     .container{padding:20px 24px}
-    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0));border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0));border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
     .file-box{display:grid;gap:14px}
     label{color:var(--muted);font-weight:600}
     input[type=file]{
@@ -37,43 +85,43 @@
     }
     .hint{color:var(--muted);font-size:12px}
     .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#0f1520;color:var(--text);cursor:pointer;transition:.15s ease}
-    .btn.primary{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(34,211,238,.14))}
-    .btn:disabled{background:#080d17;border-color:#111826;color:#57667a;cursor:not-allowed;opacity:1}
-    .btn.primary:disabled{background:#080d17;border-color:#111826}
+    .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--button);color:var(--text);cursor:pointer;transition:.15s ease}
+    .btn.primary{border-color:color-mix(in srgb, var(--accent) 65%, var(--border));background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 20%, transparent),color-mix(in srgb, var(--accent-2) 20%, transparent))}
+    .btn:disabled{background:var(--button-disabled);border-color:var(--button-disabled-border);color:var(--button-disabled-text);cursor:not-allowed;opacity:1}
+    .btn.primary:disabled{background:var(--button-disabled);border-color:var(--button-disabled-border)}
     .file-trigger{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .file-trigger .btn{min-width:140px;justify-content:center;display:inline-flex;font-weight:600}
     .fail-box{margin-top:12px;padding:12px;border-radius:12px;border:1px solid rgba(229,62,62,.3);background:rgba(229,62,62,.08);}
-    .fail-box h3{margin:0 0 8px;font-size:13px;color:#fca5a5;letter-spacing:.2px}
-    .fail-box ul{margin:0;padding-left:18px;font-size:12px;color:#f8d7da;display:grid;gap:4px}
+    .fail-box h3{margin:0 0 8px;font-size:13px;color:var(--fail-heading);letter-spacing:.2px}
+    .fail-box ul{margin:0;padding-left:18px;font-size:12px;color:var(--fail-text);display:grid;gap:4px}
     .content{display:none}
     .content.active{display:block}
     table{border-collapse:collapse;width:100%;white-space:nowrap}
-    thead th{position:sticky;top:0;background:#0f1520}
-    th,td{border-bottom:1px solid #1c2430;padding:8px 10px;text-align:left}
+    thead th{position:sticky;top:0;background:var(--table-head)}
+    th,td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:left}
     th.sortable{cursor:pointer;user-select:none}
     th.sortable .header-inner{display:inline-flex;align-items:center;gap:6px}
     th.sortable .sort-indicator{font-size:10px;opacity:.4;transition:.15s ease}
-    th.sortable.sort-active .sort-indicator{opacity:1;color:#7bb8ff}
-    tbody tr:hover{background:rgba(255,255,255,0.03)}
-    .scroll{overflow:auto;border:1px solid var(--border);border-radius:12px;background:#0f1520}
+    th.sortable.sort-active .sort-indicator{opacity:1;color:var(--accent)}
+    tbody tr:hover{background:var(--row-hover)}
+    .scroll{overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
     .data-card{height:77vh;max-height:77vh;display:flex;flex-direction:column;}
     .data-card .table-scroll{flex:1;min-height:0;}
-    .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;background:#0f1520;border:1px solid var(--border);color:#8fa3b8;font-size:12px}
+    .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;background:var(--pill-bg);border:1px solid var(--border);color:var(--pill-text);font-size:12px}
     #importStatus:empty{display:none}
     .file-pill{margin-top:6px}
-    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:#c7d2fe}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:var(--kbd)}
     /* Filters & pagination */
-    .filters th{background:#0b1420;position:sticky;top:32px;z-index:1}
-    .filter-input{width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:#0f1520;color:var(--text);font-size:12px}
-    .filter-input::placeholder{color:#6b7b8f}
+    .filters th{background:var(--table-head);position:sticky;top:32px;z-index:1}
+    .filter-input{width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px}
+    .filter-input::placeholder{color:var(--input-placeholder)}
     .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .spacer{flex:1}
     .pagination{display:flex;align-items:center;gap:6px}
     .pagination .btn{padding:6px 10px}
-    .select{padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:#0f1520;color:var(--text)}
+    .select{padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text)}
     /* Color chips */
-    .chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:#0f1520}
+    .chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:var(--surface)}
     .chip-swatch{width:14px;height:14px;border-radius:4px;border:1px solid #0003}
     .map-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:currentColor}
     .validation-card{margin-top:20px;display:inline-block;max-width:100%}
@@ -94,20 +142,20 @@
     .modal-close:hover{background:rgba(255,255,255,.05);color:var(--text)}
     .about-body p{margin:0 0 12px;line-height:1.6;color:var(--muted)}
     .about-body p strong{color:var(--text)}
-    .about-body a{color:#7bb8ff;text-decoration:none}
-    .about-body a:visited{color:#7bb8ff}
+    .about-body a{color:var(--accent);text-decoration:none}
+    .about-body a:visited{color:var(--accent)}
     .about-body a:hover{text-decoration:underline}
-    .sample-link{color:#7bb8ff;font-weight:700;text-decoration:none}
+    .sample-link{color:var(--accent);font-weight:700;text-decoration:none}
     .sample-link:hover{text-decoration:underline}
     .sample-list{display:grid;gap:10px;margin:12px 0}
     .sample-option{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);padding:10px;border-radius:10px;background:rgba(255,255,255,.02);cursor:pointer;transition:.15s ease}
-    .sample-option:hover{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.06),rgba(34,211,238,.06))}
-    .sample-option.selected{border-color:#2a3a4d;background:linear-gradient(135deg,rgba(77,163,255,.12),rgba(34,211,238,.12));box-shadow:0 0 0 1px rgba(42,58,77,.6)}
+    .sample-option:hover{border-color:color-mix(in srgb, var(--accent) 65%, var(--border));background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 12%, transparent),color-mix(in srgb, var(--accent-2) 12%, transparent))}
+    .sample-option.selected{border-color:color-mix(in srgb, var(--accent) 65%, var(--border));background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 18%, transparent),color-mix(in srgb, var(--accent-2) 18%, transparent));box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent)}
     .sample-option input{position:absolute;opacity:0;pointer-events:none}
     .sample-option strong{color:var(--text)}
     .sample-option small{display:block;color:var(--muted)}
     .sample-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .repo-link:visited{color:#7bb8ff}
+    .repo-link:visited{color:var(--accent)}
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
@@ -235,6 +283,16 @@
     const validationCard = document.getElementById('validationCard');
     const validationTableBody = document.getElementById('validationTableBody');
     const importStatusEl = document.getElementById('importStatus');
+
+    // ===== Theme =====
+    const themePreference = window.matchMedia('(prefers-color-scheme: dark)');
+    function applyTheme(theme){
+      document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+    }
+    applyTheme(themePreference.matches ? 'dark' : 'light');
+    themePreference.addEventListener('change', (event) => {
+      applyTheme(event.matches ? 'dark' : 'light');
+    });
 
     const FILE_DEFS = [
       { file:'agency.txt', key:'agency', label:'Agency' },
