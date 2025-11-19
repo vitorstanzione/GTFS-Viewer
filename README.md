@@ -68,5 +68,5 @@ You don’t need permission — just give credit.
 
 ## License
 This project is released under the **MIT License**.
-You’re free to copy, modify, and use it in your own projects subject to the license terms.
+You’re free to copy, modify, and use it in your own projects, subject to the license terms.
 See [`LICENSE`](./LICENSE) for details.
