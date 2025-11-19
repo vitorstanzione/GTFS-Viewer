@@ -838,10 +838,14 @@
       renderSelectedFiles();
       startAutoImport();
     });
-    clearBtn.addEventListener('click', () => {
-      if (importInProgress) return;
-      stagedFiles=[]; fileInput.value='';
-      renderSelectedFiles();
+    function resetAppState(options={}){
+      const { preserveSelection=false } = options;
+      if (!preserveSelection){
+        stagedFiles=[];
+        if (fileInput) fileInput.value='';
+        renderSelectedFiles();
+      }
+
       Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; delete el.dataset.available; delete el.dataset.fastMode; });
       if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
       parsedData={}; failedImports=[]; fastModeConfig={}; loadedFileNames.clear();
@@ -849,6 +853,11 @@
       updateValidationReport();
       updateImportStatus('');
       showContent('home');
+    }
+
+    clearBtn.addEventListener('click', () => {
+      if (importInProgress) return;
+      resetAppState();
     });
 
     function renderSelectedFiles(){
@@ -1061,6 +1070,7 @@
 
     async function importSelectedFiles(files){
       if (importInProgress) return;
+      resetAppState({ preserveSelection:true });
       resetValidationBeforeImport();
       const payload = Array.isArray(files) ? files.slice() : Array.from(files || []);
       setImportInProgress(true);
