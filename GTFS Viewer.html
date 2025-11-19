@@ -1046,8 +1046,18 @@
       setTabs(document.querySelector('.content.active')?.id || 'home');
     }
 
+    function resetValidationBeforeImport(){
+      validationHasAlerts = false;
+      resetValidationCard();
+      if (validationSection){
+        delete validationSection.dataset.available;
+      }
+      setTabs(document.querySelector('.content.active')?.id || 'home');
+    }
+
     async function importSelectedFiles(files){
       if (importInProgress) return;
+      resetValidationBeforeImport();
       const payload = Array.isArray(files) ? files.slice() : Array.from(files || []);
       setImportInProgress(true);
       updateImportStatus('Preparing import...');
