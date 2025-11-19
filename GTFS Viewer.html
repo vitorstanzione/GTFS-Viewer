@@ -10,6 +10,8 @@
     body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;background:radial-gradient(1200px 1200px at 10% -10%,rgba(77,163,255,.08),transparent),radial-gradient(1000px 800px at 110% 10%,rgba(34,211,238,.08),transparent),var(--bg);color:var(--text);min-height:100vh}
     header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
     header h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .brand-title{display:flex;align-items:center;gap:10px}
+    .brand-logo{height:2em;width:auto;display:block}
     .tabs{display:flex;flex-direction:column;gap:12px;align-items:flex-start;width:100%}
     .tab-header{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%;flex-wrap:wrap}
     .tab-header-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -359,9 +361,7 @@
 
       const primaryRow = document.createElement('div');
       primaryRow.className = 'tab-header-left';
-      const title = document.createElement('h1');
-      title.textContent = 'GTFS Viewer';
-      primaryRow.appendChild(title);
+      primaryRow.appendChild(createBrandTitle());
       baseDefs.forEach(def => primaryRow.appendChild(createTabButton(def, activeId)));
 
       const aboutWrap = document.createElement('div');
@@ -387,6 +387,26 @@
         group.append(label, row);
         tabsEl.appendChild(group);
       }
+    }
+
+    function createBrandTitle(){
+      const title = document.createElement('h1');
+      title.className = 'brand-title';
+      title.textContent = 'GTFS Viewer';
+
+      const logoPath = 'favicon/android-chrome-512x512.png';
+      const logoImg = new Image();
+      logoImg.className = 'brand-logo';
+      logoImg.alt = 'GTFS logo';
+      logoImg.src = logoPath;
+      logoImg.addEventListener('load', () => {
+        title.textContent = '';
+        const viewerText = document.createElement('span');
+        viewerText.textContent = 'Viewer';
+        title.append(logoImg, viewerText);
+      }, { once:true });
+
+      return title;
     }
 
     function showContent(id) {
