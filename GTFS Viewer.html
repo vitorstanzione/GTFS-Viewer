@@ -73,6 +73,8 @@
     .tab-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);opacity:.8}
     .tab-btn{appearance:none;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;transition:.15s ease;font-weight:600}
     .tab-btn.active{background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 18%, transparent),color-mix(in srgb, var(--accent-2) 18%, transparent));color:var(--text);border-color:color-mix(in srgb, var(--accent) 65%, var(--border))}
+    .tab-btn.tab-alert{color:var(--fail-heading);border-color:color-mix(in srgb, var(--fail-heading) 55%, var(--border));background:color-mix(in srgb, var(--fail-heading) 10%, transparent)}
+    .tab-btn.tab-alert.active{background:color-mix(in srgb, var(--fail-heading) 22%, transparent);color:var(--text);border-color:color-mix(in srgb, var(--fail-heading) 70%, var(--border))}
     .container{padding:20px 24px}
     .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0));border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
     .file-box{display:grid;gap:14px}
@@ -298,6 +300,7 @@
     const validationTableBody = document.getElementById('validationTableBody');
     const validationSection = document.getElementById('tab-validation');
     const importStatusEl = document.getElementById('importStatus');
+    let validationHasAlerts = false;
 
     // ===== Theme =====
     const themePreference = window.matchMedia('(prefers-color-scheme: dark)');
@@ -437,7 +440,10 @@
     // ===== Tabs =====
     function createTabButton(def, activeId) {
       const button = document.createElement('button');
-      button.className = 'tab-btn' + (def.target === activeId ? ' active' : '');
+      const classes = ['tab-btn'];
+      if (def.className) classes.push(def.className);
+      if (def.target === activeId) classes.push('active');
+      button.className = classes.join(' ');
       button.textContent = def.label;
       button.addEventListener('click', () => showContent(def.target));
       return button;
@@ -453,7 +459,7 @@
       }
 
       if (loadedFileNames.size){
-        const validationTab = { id:'validation', label:FRIENDLY.validation, target:'tab-validation' };
+        const validationTab = { id:'validation', label:FRIENDLY.validation, target:'tab-validation', className: validationHasAlerts ? 'tab-alert' : '' };
         if (simpleReady){
           baseDefs.push(validationTab);
         } else {
@@ -999,11 +1005,13 @@
 
     function updateValidationReport(){
       if (!validationCard || !validationTableBody) return;
+      validationHasAlerts = false;
       if (!loadedFileNames.size){
         resetValidationCard();
         if (validationSection){
           delete validationSection.dataset.available;
         }
+        setTabs(document.querySelector('.content.active')?.id || 'home');
         return;
       }
       const results = evaluateValidationRules();
@@ -1013,6 +1021,7 @@
         'missing-required': { text:'MISSING', className:'status-badge status-missing-required' },
         forbidden: { text:'FOUND', className:'status-badge status-forbidden' }
       };
+      validationHasAlerts = results.some(item => item.status === 'missing-required' || item.status === 'forbidden');
       validationTableBody.innerHTML='';
       const frag = document.createDocumentFragment();
       results.forEach(item => {
@@ -1037,6 +1046,7 @@
       if (validationSection){
         validationSection.dataset.available='true';
       }
+      setTabs(document.querySelector('.content.active')?.id || 'home');
     }
 
     async function importSelectedFiles(files){
