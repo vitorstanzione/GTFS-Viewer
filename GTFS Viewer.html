@@ -454,17 +454,14 @@
 
       const baseDefs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
       const simpleReady = simpleEl.dataset.loaded === 'true';
-      if (simpleReady) {
-        baseDefs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
-      }
 
       if (loadedFileNames.size){
         const validationTab = { id:'validation', label:FRIENDLY.validation, target:'tab-validation', className: validationHasAlerts ? 'tab-alert' : '' };
-        if (simpleReady){
-          baseDefs.push(validationTab);
-        } else {
-          baseDefs.splice(1, 0, validationTab);
-        }
+        baseDefs.push(validationTab);
+      }
+
+      if (simpleReady) {
+        baseDefs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
       }
 
       const importedDefs = FILE_DEFS
