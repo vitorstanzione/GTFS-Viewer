@@ -301,6 +301,7 @@
     const validationSection = document.getElementById('tab-validation');
     const importStatusEl = document.getElementById('importStatus');
     let validationHasAlerts = false;
+    let validationReady = false;
 
     // ===== Theme =====
     const themePreference = window.matchMedia('(prefers-color-scheme: dark)');
@@ -455,7 +456,7 @@
       const baseDefs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
       const simpleReady = simpleEl.dataset.loaded === 'true';
 
-      if (loadedFileNames.size){
+      if (validationReady){
         const validationTab = { id:'validation', label:FRIENDLY.validation, target:'tab-validation', className: validationHasAlerts ? 'tab-alert' : '' };
         baseDefs.push(validationTab);
       }
@@ -1003,6 +1004,7 @@
     function updateValidationReport(){
       if (!validationCard || !validationTableBody) return;
       validationHasAlerts = false;
+      validationReady = false;
       if (!loadedFileNames.size){
         resetValidationCard();
         if (validationSection){
@@ -1019,6 +1021,7 @@
         forbidden: { text:'FOUND', className:'status-badge status-forbidden' }
       };
       validationHasAlerts = results.some(item => item.status === 'missing-required' || item.status === 'forbidden');
+      validationReady = true;
       validationTableBody.innerHTML='';
       const frag = document.createDocumentFragment();
       results.forEach(item => {
@@ -1048,6 +1051,7 @@
 
     function resetValidationBeforeImport(){
       validationHasAlerts = false;
+      validationReady = false;
       resetValidationCard();
       if (validationSection){
         delete validationSection.dataset.available;
