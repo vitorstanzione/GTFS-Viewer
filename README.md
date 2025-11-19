@@ -55,9 +55,9 @@ At minimum, the app can show any static GTFS table you provide. Some features ne
 ## Testing
 
 ### Manual verification
-- **Chrome (latest stable):** Import a large GTFS text file (200 MB+). Confirm the import status updates incrementally without falling back to `blob.text()`.
-- **Firefox (latest stable):** Repeat the large file import and ensure streaming progress is reported continuously.
-- **Safari (latest stable):** Import the same large feed and verify chunked parsing completes without triggering the legacy `blob.text()` path.
+- **Chrome (latest stable):** Click **Load sample feed**, pick `sample-feed.zip`, and confirm every table renders and basic filtering/sorting works.
+- **Firefox (latest stable):** Use the sample modal to import `Public Transport Victoria.zip` and verify the streaming progress indicator updates while loading.
+- **Safari (latest stable):** Load either sample via the modal and ensure parsing completes without dropping back to the legacy `blob.text()` path.
 
 ## Contributing
 This repository does **not accept pull requests or direct changes**.
