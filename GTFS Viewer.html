@@ -28,6 +28,8 @@
       --kbd:#4338ca;
       --fail-heading:#b91c1c;
       --fail-text:#991b1b;
+      --modal-overlay: color-mix(in srgb, #080d14 55%, color-mix(in srgb, var(--bg) 45%, transparent));
+      --modal-bg: linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
     }
 
     :root[data-theme="dark"] {
@@ -53,6 +55,8 @@
       --kbd:#c7d2fe;
       --fail-heading:#fca5a5;
       --fail-text:#f8d7da;
+      --modal-overlay: color-mix(in srgb, #05070c 65%, color-mix(in srgb, var(--bg) 35%, transparent));
+      --modal-bg: linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
     }
     *{box-sizing:border-box}
     body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;background:radial-gradient(1200px 1200px at 10% -10%,color-mix(in srgb, var(--accent) 15%, transparent),transparent),radial-gradient(1000px 800px at 110% 10%,color-mix(in srgb, var(--accent-2) 15%, transparent),transparent),var(--bg);color:var(--text);min-height:100vh}
@@ -134,9 +138,9 @@
     .status-missing-ok{background:#719600}
     .status-missing-required{background:#be0000}
     .status-forbidden{background:#be0000}
-    .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(8,13,20,.65);backdrop-filter:blur(4px)}
+    .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--modal-overlay);backdrop-filter:blur(4px)}
     .modal[hidden]{display:none}
-    .modal-dialog{position:relative;max-width:520px;width:100%;background:linear-gradient(180deg,rgba(17,24,39,.95),rgba(17,24,39,.9));border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 18px 45px rgba(0,0,0,.35);overflow:auto;max-height:90vh}
+    .modal-dialog{position:relative;max-width:520px;width:100%;background:var(--modal-bg);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 18px 45px rgba(0,0,0,.35);overflow:auto;max-height:90vh;color:var(--text)}
     .modal-dialog h2{margin-top:0;margin-bottom:16px;font-size:18px}
     .modal-close{position:absolute;top:14px;right:14px;background:transparent;border:1px solid transparent;color:var(--muted);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center}
     .modal-close:hover{background:rgba(255,255,255,.05);color:var(--text)}
