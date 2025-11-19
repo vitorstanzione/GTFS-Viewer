@@ -188,7 +188,7 @@
           </div>
           <div class="hint">GTFS ZIP bundles are supported. Tabs: Agency, Calendar, Calendar dates, Fare attributes, Fare rules, Frequencies, Routes, Shapes, Stop times, Stops, Transfers, Trips, and OD time table (derived). URLs become clickable; color fields render as swatches.</div>
           <div class="hint">Real-world note: imports around 30&nbsp;MB have worked so far; a 60&nbsp;MB feed currently fails to finish; another with 80&nbsp;MB worked smoothly.</div>
-          <div class="hint">The <strong>missing-file validation</strong> checks whether required/forbidden files are present for the scenario, but it doesn’t yet look at headers, field formats, or the file contents themselves.</div>
+          <div class="hint">The <strong>Required file check</strong> tab shows whether required/forbidden files are present for the scenario, but it doesn’t yet look at headers, field formats, or the file contents themselves.</div>
           <a id="sampleLink" class="sample-link" href="#">Load sample feed</a>
           <div id="selectedFiles"></div>
           <div id="importStatus" class="pill" hidden aria-live="polite"></div>
@@ -198,8 +198,12 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <section id="tab-simple" class="content"></section>
+    <section id="tab-validation" class="content">
       <div class="card validation-card" id="validationCard" hidden>
-        <h2 style="margin-top:0">Missing file validation</h2>
+        <h2 style="margin-top:0">Required file check</h2>
         <p id="validationInfo" class="hint">Results are based on the current import. Requirements adjust automatically according to related files.</p>
         <div class="scroll">
           <table class="validation-table">
@@ -215,8 +219,6 @@
         </div>
       </div>
     </section>
-
-    <section id="tab-simple" class="content"></section>
     <section id="tab-agency" class="content"></section>
     <section id="tab-areas" class="content"></section>
     <section id="tab-attributions" class="content"></section>
@@ -294,6 +296,7 @@
     const simpleEl = document.getElementById('tab-simple');
     const validationCard = document.getElementById('validationCard');
     const validationTableBody = document.getElementById('validationTableBody');
+    const validationSection = document.getElementById('tab-validation');
     const importStatusEl = document.getElementById('importStatus');
 
     // ===== Theme =====
@@ -373,7 +376,7 @@
       return acc;
     }, {});
 
-    const FRIENDLY = { home:'Home', simple:'OD time table' };
+    const FRIENDLY = { home:'Home', simple:'OD time table', validation:'Required file check' };
     FILE_DEFS.forEach(def => { FRIENDLY[def.key] = def.label; });
 
     const FILES_BY_NAME = FILE_DEFS.reduce((acc, def) => {
@@ -444,8 +447,18 @@
       tabsEl.innerHTML = '';
 
       const baseDefs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
-      if (simpleEl.dataset.loaded === 'true') {
+      const simpleReady = simpleEl.dataset.loaded === 'true';
+      if (simpleReady) {
         baseDefs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
+      }
+
+      if (loadedFileNames.size){
+        const validationTab = { id:'validation', label:FRIENDLY.validation, target:'tab-validation' };
+        if (simpleReady){
+          baseDefs.push(validationTab);
+        } else {
+          baseDefs.splice(1, 0, validationTab);
+        }
       }
 
       const importedDefs = FILE_DEFS
@@ -988,6 +1001,9 @@
       if (!validationCard || !validationTableBody) return;
       if (!loadedFileNames.size){
         resetValidationCard();
+        if (validationSection){
+          delete validationSection.dataset.available;
+        }
         return;
       }
       const results = evaluateValidationRules();
@@ -1018,6 +1034,9 @@
       validationCard.hidden = false;
       validationCard.removeAttribute('aria-hidden');
       validationCard.style.display = '';
+      if (validationSection){
+        validationSection.dataset.available='true';
+      }
     }
 
     async function importSelectedFiles(files){
