@@ -1295,6 +1295,38 @@
       return `${value.toFixed(precision)} ${units[unitIndex]}`;
     }
 
+    function estimateInMemoryBytes(){
+      const memory = typeof performance !== 'undefined' ? performance.memory : null;
+      if (memory && Number.isFinite(memory.usedJSHeapSize)){
+        return memory.usedJSHeapSize;
+      }
+      let total = 0;
+      let hasEstimate = false;
+      Object.values(parsedData).forEach(entry => {
+        if (!entry) return;
+        if (Number.isFinite(entry.originalBytes)){
+          total += entry.originalBytes;
+          hasEstimate = true;
+          return;
+        }
+        if (Array.isArray(entry.rows) && entry.rows.length){
+          const rowCount = Number.isFinite(entry.rowCount) ? entry.rowCount : entry.rows.length;
+          const columnCount = Array.isArray(entry.headers) ? entry.headers.length : 0;
+          if (rowCount > 0 && columnCount > 0){
+            total += rowCount * columnCount * 8;
+            hasEstimate = true;
+          }
+        }
+      });
+      return hasEstimate ? total : null;
+    }
+
+    function formatMemoryUsage(bytes){
+      if (!Number.isFinite(bytes)) return 'RAM usage: unavailable';
+      const formatted = formatHumanBytes(bytes) || '0 B';
+      return `RAM usage: ${formatted}`;
+    }
+
     function formatProgressBytes(processed, total){
       const processedText = formatHumanBytes(processed);
       if (!processedText) return '';
@@ -1331,6 +1363,7 @@
       const parts = [];
       let primary = '';
       let secondary = '';
+      const memoryText = formatMemoryUsage(estimateInMemoryBytes());
       if (baseLabel){
         primary = baseLabel;
         parts.push(baseLabel);
@@ -1342,16 +1375,14 @@
         parts.push(primary);
       }
       if (metrics.parsedRows){
-        const parsedText = `${metrics.parsedRows.toLocaleString()} rows parsed`;
-        parts.push(parsedText);
-        if (!secondary){
-          secondary = parsedText;
-        }
+        parts.push(`${metrics.parsedRows.toLocaleString()} rows parsed`);
       }
       if (metrics.deferredBytes){
-        const deferredText = `${formatHumanBytes(metrics.deferredBytes)} deferred`;
-        parts.push(deferredText);
-        secondary = deferredText;
+        parts.push(`${formatHumanBytes(metrics.deferredBytes)} deferred`);
+      }
+      if (memoryText){
+        parts.push(memoryText);
+        secondary = memoryText;
       }
       return { text: parts.join(' • '), metrics, primary, secondary };
     }
