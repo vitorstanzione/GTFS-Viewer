@@ -508,6 +508,10 @@
     const pendingParses = new Map();
     let bulkActionInProgress = false;
 
+    function isSimpleAvailable(){
+      return SIMPLE_REQUIRED.every(key => !!parsedData[key]);
+    }
+
     function getStoredDeferThresholdMb(){
       const raw = localStorage.getItem(DEFER_THRESHOLD_STORAGE_KEY);
       const parsed = Number(raw);
@@ -555,13 +559,14 @@
 
       const baseDefs = [{ id:'home', label:FRIENDLY.home, target:'home' }];
       const simpleReady = simpleEl.dataset.loaded === 'true';
+      const simpleAvailable = isSimpleAvailable();
 
       if (validationReady){
         const validationTab = { id:'validation', label:FRIENDLY.validation, target:'tab-validation', className: validationHasAlerts ? 'tab-alert' : '' };
         baseDefs.push(validationTab);
       }
 
-      if (simpleReady) {
+      if (simpleReady || simpleAvailable) {
         baseDefs.push({ id:'simple', label:FRIENDLY.simple, target:'tab-simple' });
       }
 
@@ -638,8 +643,12 @@
       document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
       if (id && id.startsWith('tab-')){
         const key = id.slice(4);
-        if (key && key !== 'simple'){
-          ensureTableRendered(key);
+        if (key){
+          if (key === 'simple'){
+            prepareSimpleTab();
+          } else {
+            ensureTableRendered(key);
+          }
         }
       }
       const el = document.getElementById(id);
@@ -1550,19 +1559,20 @@
       updateValidationReport();
 
       const previouslyActiveId = document.querySelector('.content.active')?.id || 'home';
-      const simpleReady = SIMPLE_REQUIRED.every(key => parsedData[key] && !parsedData[key].deferred && Array.isArray(parsedData[key].rows));
+      const simpleAvailable = isSimpleAvailable();
+      const simpleReady = simpleAvailable && SIMPLE_REQUIRED.every(key => parsedData[key] && !parsedData[key].deferred && Array.isArray(parsedData[key].rows));
       if (simpleReady) {
         buildAndRenderSimpleTable();
       }
 
-      let targetId = previouslyActiveId === 'tab-simple' && !simpleReady
+      let targetId = previouslyActiveId === 'tab-simple' && !simpleAvailable
         ? 'home'
         : previouslyActiveId;
       if (targetId !== 'home') {
         const targetEl = document.getElementById(targetId);
         const isSimpleTab = targetId === 'tab-simple';
         const isReady = isSimpleTab
-          ? simpleEl?.dataset?.loaded === 'true'
+          ? simpleAvailable
           : targetEl?.dataset?.available === 'true';
         if (!isReady) {
           targetId = 'home';
@@ -2436,6 +2446,56 @@ self.onmessage = function(event){
       return data.loadingPromise;
     }
 
+    async function ensureSimpleDataReady(){
+      for (const key of SIMPLE_REQUIRED){
+        const data = parsedData[key];
+        if (!data) return false;
+        const needsHydration = data.deferred && (!Array.isArray(data.rows) || !data.rows.length);
+        if (needsHydration || data.loadingPromise){
+          const container = containers[key] || simpleEl;
+          if (needsHydration && container){
+            renderLoadingPlaceholder(container, key, 'Parsing rows on demand...');
+          }
+          try {
+            await (data.loadingPromise || hydrateDeferredData(key, data, container));
+          } catch (err){
+            return false;
+          }
+        }
+        const latest = parsedData[key];
+        if (!latest || latest.deferred || !Array.isArray(latest.rows)) return false;
+      }
+      return true;
+    }
+
+    function renderSimpleError(message){
+      if (!simpleEl) return;
+      simpleEl.innerHTML = '';
+      delete simpleEl.dataset.loaded;
+      const card = document.createElement('div');
+      card.className = 'card';
+      const text = document.createElement('p');
+      text.textContent = message || 'Unable to load the OD time table.';
+      card.appendChild(text);
+      simpleEl.appendChild(card);
+    }
+
+    async function prepareSimpleTab(){
+      if (!simpleEl) return;
+      if (!isSimpleAvailable()){
+        renderSimpleError('Required files are not loaded.');
+        return;
+      }
+      if (simpleEl.dataset.loaded === 'true') return;
+      renderLoadingPlaceholder(simpleEl, 'simple', 'Preparing OD time table...');
+      const ready = await ensureSimpleDataReady();
+      if (ready){
+        buildAndRenderSimpleTable();
+      } else {
+        renderSimpleError('Unable to load required data for the OD time table.');
+      }
+    }
+
     function renderStopTimesFastMode(container, data, fastState){
       container.innerHTML='';
       container.dataset.fastMode='true';
@@ -2729,5 +2789,3 @@ self.onmessage = function(event){
 </body>
 
 </html>
-
-
