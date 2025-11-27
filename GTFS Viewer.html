@@ -172,6 +172,11 @@
     .sample-option strong{color:var(--text)}
     .sample-option small{display:block;color:var(--muted)}
     .sample-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .settings-field{display:flex;flex-direction:column;gap:6px;margin:14px 0}
+    .settings-input-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .settings-input{padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);
+    width:140px;font-size:14px}
+    .settings-unit{font-weight:700;color:var(--muted)}
     .repo-link:visited{color:var(--accent)}
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
@@ -298,6 +303,27 @@
   </div>
 </div>
 
+<div id="settingsModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
+  <div class="modal-dialog">
+    <button type="button" class="modal-close" aria-label="Close settings dialog">×</button>
+    <h2 id="settingsTitle">Settings</h2>
+    <form id="settingsForm">
+      <div class="settings-field">
+        <label for="deferThresholdInput">Max file size for automatic parsing</label>
+        <div class="settings-input-row">
+          <input id="deferThresholdInput" class="settings-input" name="deferThreshold" type="number" min="1" step="0.1" inputmode="decimal" aria-describedby="deferThresholdHelp" />
+          <span class="settings-unit">MB</span>
+        </div>
+        <p id="deferThresholdHelp" class="hint">Larger files will load metadata first and parse on demand.</p>
+      </div>
+      <div class="sample-actions">
+        <button class="btn primary" type="submit" id="settingsSaveBtn">Save</button>
+        <button class="btn" type="button" id="settingsCancelBtn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     // ===== Elements & state =====
@@ -415,6 +441,11 @@
     const sampleCancelBtn = document.getElementById('sampleCancelBtn');
     const sampleErrorEl = document.getElementById('sampleError');
     const sampleErrorText = document.getElementById('sampleErrorText');
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsClose = settingsModal?.querySelector('.modal-close');
+    const settingsForm = document.getElementById('settingsForm');
+    const settingsCancelBtn = document.getElementById('settingsCancelBtn');
+    const deferThresholdInput = document.getElementById('deferThresholdInput');
     const SAMPLE_ROOT = new URL('https://raw.githubusercontent.com/vitorstanzione/GTFS-Viewer/main/Example%20GTFS/', window.location.href);
 
     function resetValidationCard(){
@@ -434,6 +465,7 @@
     const EAGER_LOAD_KEYS = new Set(['routes','stops','trips']);
     const STOP_TIMES_FAST_THRESHOLD = 1_000_000;
     const DEFAULT_DEFER_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+    const DEFER_THRESHOLD_STORAGE_KEY = 'gtfs-viewer-defer-threshold-mb';
     let stagedFiles = [];
     let parsedData = {};
     let failedImports = [];
@@ -448,6 +480,34 @@
     const sourceFiles = new Map();
     const pendingParses = new Map();
 
+    function getStoredDeferThresholdMb(){
+      const raw = localStorage.getItem(DEFER_THRESHOLD_STORAGE_KEY);
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed <= 0) return null;
+      return parsed;
+    }
+
+    function applyDeferThresholdMb(mb){
+      const parsedMb = typeof mb === 'number' ? mb : Number(mb);
+      const validMb = Number.isFinite(parsedMb) && parsedMb > 0 ? parsedMb : null;
+      const appliedMb = validMb || (DEFAULT_DEFER_THRESHOLD / (1024 * 1024));
+      deferThreshold = appliedMb * 1024 * 1024;
+      localStorage.setItem(DEFER_THRESHOLD_STORAGE_KEY, String(appliedMb));
+      if (deferThresholdInput){
+        deferThresholdInput.value = String(appliedMb);
+      }
+    }
+
+    function getCurrentDeferThresholdMb(){
+      return Number((deferThreshold / (1024 * 1024)).toFixed(2));
+    }
+
+    function initDeferThresholdSetting(){
+      const storedMb = getStoredDeferThresholdMb();
+      applyDeferThresholdMb(storedMb);
+    }
+
+    initDeferThresholdSetting();
     initParserWorker();
 
     // ===== Tabs =====
@@ -491,6 +551,16 @@
 
       const aboutWrap = document.createElement('div');
       aboutWrap.className = 'tab-about';
+
+      const settingsButton = document.createElement('button');
+      settingsButton.type = 'button';
+      settingsButton.className = 'tab-btn';
+      settingsButton.textContent = '🔧';
+      settingsButton.title = 'Settings';
+      settingsButton.setAttribute('aria-label', 'Open settings');
+      settingsButton.addEventListener('click', () => openSettingsModal(settingsButton));
+      aboutWrap.appendChild(settingsButton);
+
       const aboutButton = document.createElement('button');
       aboutButton.type = 'button';
       aboutButton.className = 'tab-btn';
@@ -551,7 +621,7 @@
     const sampleModal = document.getElementById('sampleModal');
     const aboutClose = aboutModal?.querySelector('.modal-close');
     const sampleClose = sampleModal?.querySelector('.modal-close');
-    const backgroundEls = Array.from(document.querySelectorAll('body > :not(#aboutModal):not(#sampleModal)'))
+    const backgroundEls = Array.from(document.querySelectorAll('body > :not(#aboutModal):not(#sampleModal):not(#settingsModal)'))
       .filter(el => el.tagName !== 'SCRIPT');
     const focusableSelectors = [
       'a[href]',
@@ -613,6 +683,18 @@
     function openAboutModal(trigger){ openModal(aboutModal, trigger); }
     function closeAboutModal(){ closeModal(aboutModal); }
     function closeSampleModal(){ closeModal(sampleModal); }
+    function openSettingsModal(trigger){
+      if (deferThresholdInput){
+        deferThresholdInput.value = String(getCurrentDeferThresholdMb());
+      }
+      openModal(settingsModal, trigger);
+    }
+    function closeSettingsModal(){
+      if (deferThresholdInput){
+        deferThresholdInput.value = String(getCurrentDeferThresholdMb());
+      }
+      closeModal(settingsModal);
+    }
 
     function handleModalKeydown(event){
       if (!activeModal || activeModal.hidden) return;
@@ -643,13 +725,18 @@
 
     aboutClose?.addEventListener('click', closeAboutModal);
     sampleClose?.addEventListener('click', closeSampleModal);
+    settingsClose?.addEventListener('click', closeSettingsModal);
     aboutModal?.addEventListener('keydown', handleModalKeydown);
     sampleModal?.addEventListener('keydown', handleModalKeydown);
+    settingsModal?.addEventListener('keydown', handleModalKeydown);
     aboutModal?.addEventListener('click', event => {
       if (event.target === aboutModal) closeAboutModal();
     });
     sampleModal?.addEventListener('click', event => {
       if (event.target === sampleModal) closeSampleModal();
+    });
+    settingsModal?.addEventListener('click', event => {
+      if (event.target === settingsModal) closeSettingsModal();
     });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && activeModal && !activeModal.hidden){
@@ -831,6 +918,12 @@
       await stageSampleFile(selected);
     });
     sampleCancelBtn?.addEventListener('click', closeSampleModal);
+    settingsForm?.addEventListener('submit', event => {
+      event.preventDefault();
+      applyDeferThresholdMb(deferThresholdInput?.value);
+      closeSettingsModal();
+    });
+    settingsCancelBtn?.addEventListener('click', closeSettingsModal);
 
     // ===== File handling =====
     function handleDrop(ev) {
