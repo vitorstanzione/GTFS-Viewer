@@ -216,7 +216,7 @@
             <div class="import-status-details">
               <div id="importStatus" class="pill" hidden aria-live="polite"></div>
             </div>
-            <div class="import-status-summary-card">
+            <div id="importStatusSummaryCard" class="import-status-summary-card">
               <div class="import-status-summary-lines">
                 <div id="importStatusSummaryPrimary" class="import-status-summary-primary"></div>
                 <div id="importStatusSummarySecondary" class="import-status-summary-secondary"></div>
@@ -357,6 +357,7 @@
     const validationSection = document.getElementById('tab-validation');
     const importStatusEl = document.getElementById('importStatus');
     const importStatusBlock = document.getElementById('importStatusBlock');
+    const importStatusSummaryCard = document.getElementById('importStatusSummaryCard');
     const importStatusSummaryPrimaryEl = document.getElementById('importStatusSummaryPrimary');
     const importStatusSummarySecondaryEl = document.getElementById('importStatusSummarySecondary');
     const importActionBtn = document.getElementById('importActionBtn');
@@ -1011,6 +1012,9 @@
       if (importStatusBlock){
         importStatusBlock.hidden = true;
       }
+      if (importStatusSummaryCard){
+        importStatusSummaryCard.hidden = true;
+      }
       if (importActionBtn){
         importActionBtn.hidden = true;
         importActionBtn.disabled = false;
@@ -1378,6 +1382,9 @@
       if (importStatusSummarySecondaryEl){
         importStatusSummarySecondaryEl.textContent = secondary || '';
         importStatusSummarySecondaryEl.hidden = !secondary;
+      }
+      if (importStatusSummaryCard){
+        importStatusSummaryCard.hidden = !metrics.totalTables;
       }
       if (importStatusBlock){
         importStatusBlock.hidden = !metrics.totalTables;
