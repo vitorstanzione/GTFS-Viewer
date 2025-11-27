@@ -166,7 +166,7 @@
     .about-body a{color:var(--accent);text-decoration:none}
     .about-body a:visited{color:var(--accent)}
     .about-body a:hover{text-decoration:underline}
-    .theme-toggle{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .theme-toggle{margin-top:18px;padding-bottom:14px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
     .theme-toggle .btn{flex:1;min-width:0;display:inline-flex;justify-content:center;font-weight:700}
     .theme-toggle .btn.active{background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 18%, transparent),color-mix(in srgb, var(--accent-2) 18%, transparent));color:var(--text);border-color:color-mix(in srgb, var(--accent) 65%, var(--border))}
     .sample-link{color:var(--accent);font-weight:700;text-decoration:none}
@@ -324,20 +324,20 @@
     <h2 id="settingsTitle">Settings</h2>
     <form id="settingsForm">
       <div class="settings-field">
-        <label for="deferThresholdInput">Max file size for automatic parsing</label>
-        <div class="settings-input-row">
-          <input id="deferThresholdInput" class="settings-input" name="deferThreshold" type="number" min="1" step="0.1" inputmode="decimal" aria-describedby="deferThresholdHelp" />
-          <span class="settings-unit">MB</span>
-        </div>
-        <p id="deferThresholdHelp" class="hint">Larger files will load metadata first and parse on demand.</p>
-      </div>
-      <div class="settings-field">
         <label id="themeToggleLabel">Theme</label>
         <div class="theme-toggle" role="group" aria-labelledby="themeToggleLabel">
           <button class="btn" type="button" id="themeAutoBtn">Auto</button>
           <button class="btn" type="button" id="themeDarkBtn">Dark</button>
           <button class="btn" type="button" id="themeLightBtn">Light</button>
         </div>
+      </div>
+      <div class="settings-field">
+        <label for="deferThresholdInput">Max file size for automatic parsing</label>
+        <div class="settings-input-row">
+          <input id="deferThresholdInput" class="settings-input" name="deferThreshold" type="number" min="1" step="0.1" inputmode="decimal" aria-describedby="deferThresholdHelp" />
+          <span class="settings-unit">MB</span>
+        </div>
+        <p id="deferThresholdHelp" class="hint">Larger files will load metadata first and parse on demand.</p>
       </div>
       <div class="sample-actions">
         <button class="btn primary" type="submit" id="settingsSaveBtn">Save</button>
