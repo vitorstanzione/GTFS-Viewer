@@ -67,7 +67,7 @@
     .tabs{display:flex;flex-direction:column;gap:12px;align-items:flex-start;width:100%}
     .tab-header{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%;flex-wrap:wrap}
     .tab-header-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .tab-about{display:flex;align-items:center}
+    .tab-about{display:flex;align-items:center;gap:6px}
     .tab-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .tab-group{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
     .tab-group-label{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);opacity:.8}
@@ -592,7 +592,9 @@
       const aboutButton = document.createElement('button');
       aboutButton.type = 'button';
       aboutButton.className = 'tab-btn';
-      aboutButton.textContent = 'About';
+      aboutButton.textContent = '?';
+      aboutButton.title = 'About';
+      aboutButton.setAttribute('aria-label', 'Open about dialog');
       aboutButton.addEventListener('click', () => openAboutModal(aboutButton));
       aboutWrap.appendChild(aboutButton);
 
