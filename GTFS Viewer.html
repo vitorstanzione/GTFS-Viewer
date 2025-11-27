@@ -425,15 +425,20 @@
     const loadedFileNames = new Set();
     const EAGER_LOAD_KEYS = new Set(['routes','stops','trips']);
     const STOP_TIMES_FAST_THRESHOLD = 1_000_000;
+    const DEFAULT_DEFER_THRESHOLD = 10 * 1024 * 1024; // 10 MB
     let stagedFiles = [];
     let parsedData = {};
     let failedImports = [];
     let fastModeConfig = {};
     let importInProgress = false;
+    let deferThreshold = DEFAULT_DEFER_THRESHOLD;
+    let importDeferred = false;
     let importStatusHideTimer = null;
     let parserWorker = null;
     let sampleManifest = null;
     let sampleLoading = false;
+    const sourceFiles = new Map();
+    const pendingParses = new Map();
 
     initParserWorker();
 
@@ -848,6 +853,9 @@
       Object.values(containers).forEach(el=>{ el.innerHTML=''; delete el.dataset.loaded; delete el.dataset.available; delete el.dataset.fastMode; });
       if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
       parsedData={}; failedImports=[]; fastModeConfig={}; loadedFileNames.clear();
+      importDeferred = false;
+      sourceFiles.clear();
+      pendingParses.clear();
       renderFailedFiles(failedImports);
       updateValidationReport();
       updateImportStatus('');
@@ -868,6 +876,13 @@
       }
     }
     function formatSize(bytes){ if(bytes<1024)return `${bytes} B`; const kb=bytes/1024; if(kb<1024)return `${kb.toFixed(1)} KB`; const mb=kb/1024; return `${mb.toFixed(2)} MB`; }
+
+    function getRowCount(data){
+      if (!data) return 0;
+      if (Number.isFinite(data.rowCount)) return data.rowCount;
+      if (Array.isArray(data.rows)) return data.rows.length;
+      return 0;
+    }
 
     function registerLoadedFile(def, actualName){
       if (!def) return;
@@ -929,8 +944,9 @@
       const locationsData = parsedData['locations.geojson'];
       let locationsHasData = false;
       if (hasLocations){
-        if (locationsData && Array.isArray(locationsData.rows)){
-          locationsHasData = locationsData.rows.length > 0;
+        const rowCount = getRowCount(locationsData);
+        if (rowCount > 0){
+          locationsHasData = true;
         } else if (locationsData && locationsData.error){
           // Parsing failed; keep locationsHasData false so dependent requirements trigger
           locationsHasData = false;
@@ -1072,13 +1088,25 @@
       resetAppState({ preserveSelection:true });
       resetValidationBeforeImport();
       const payload = Array.isArray(files) ? files.slice() : Array.from(files || []);
+      sourceFiles.clear();
+      let totalBytes = 0;
+      payload.forEach(file => {
+        if (!file) return;
+        const size = typeof file.size === 'number' ? file.size : 0;
+        totalBytes += size;
+        const lower = String(file.name || '').toLowerCase();
+        if (lower) {
+          sourceFiles.set(lower, file);
+        }
+      });
+      importDeferred = Number.isFinite(totalBytes) && totalBytes > deferThreshold;
       setImportInProgress(true);
-      updateImportStatus('Preparing import...');
+      updateImportStatus(importDeferred ? 'Preparing import (on-demand)...' : 'Preparing import...');
       try {
         if (!parserWorker) {
           initParserWorker();
         }
-        parserWorker.postMessage({ type:'import', files: payload });
+        parserWorker.postMessage({ type:'import', files: payload, deferred: importDeferred, totalBytes, deferThreshold });
       } catch (err) {
         console.error('Failed to start import', err);
         handleWorkerError('Unable to start import');
@@ -1143,10 +1171,69 @@
         updateImportStatus(parts.join(' • '));
       } else if (data.type === 'complete'){
         handleImportComplete(data);
+      } else if (data.type === 'single-complete'){
+        handleSingleParseComplete(data);
+      } else if (data.type === 'single-error'){
+        handleSingleParseError(data);
       } else if (data.type === 'error'){
         console.error('Worker reported error', data.message);
         handleWorkerError(data.message || 'Worker error');
       }
+    }
+
+    function handleSingleParseComplete(data){
+      const requestId = data.requestId;
+      const parsed = data.parsed || {};
+      const resolver = requestId ? pendingParses.get(requestId) : null;
+      if (requestId){
+        pendingParses.delete(requestId);
+      }
+      const key = data.key || resolver?.key;
+      if (!key || !parsedData[key]){
+        resolver?.reject?.(new Error('Unknown parse target'));
+        return;
+      }
+      const current = parsedData[key];
+      current.rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+      current.headers = Array.isArray(parsed.headers) ? parsed.headers : current.headers;
+      current.rowCount = Number.isFinite(parsed.rowCount) ? parsed.rowCount : getRowCount(parsed);
+      current.deferred = false;
+      current.error = parsed.error || null;
+      if (containers[key]){
+        containers[key].dataset.available='true';
+        delete containers[key].dataset.deferred;
+      }
+      if (key === 'stop_times'){
+        const effectiveCount = current.rowCount;
+        if (effectiveCount > STOP_TIMES_FAST_THRESHOLD){
+          fastModeConfig.stop_times = { enabled:true, rowCount: effectiveCount, aggregated:null };
+          containers[key]?.dataset && (containers[key].dataset.fastMode='true');
+        } else {
+          fastModeConfig.stop_times = { enabled:false, rowCount: effectiveCount };
+          if (containers[key]) delete containers[key].dataset.fastMode;
+        }
+      }
+      updateImportStatus('On-demand parse complete', { autoHide: 2000 });
+      resolver?.resolve?.(parsed);
+      ensureTableRendered(key);
+      const simpleReady = SIMPLE_REQUIRED.every(itemKey => parsedData[itemKey] && !parsedData[itemKey].deferred && Array.isArray(parsedData[itemKey].rows));
+      if (simpleReady){
+        buildAndRenderSimpleTable();
+      }
+    }
+
+    function handleSingleParseError(data){
+      const requestId = data.requestId;
+      const resolver = requestId ? pendingParses.get(requestId) : null;
+      if (requestId){
+        pendingParses.delete(requestId);
+      }
+      const key = data.key || resolver?.key;
+      if (key && parsedData[key]){
+        parsedData[key].error = data.message || 'On-demand parse failed';
+      }
+      updateImportStatus('On-demand parse failed', { autoHide: 4000 });
+      resolver?.reject?.(new Error(data.message || 'On-demand parse failed'));
     }
 
     function handleImportComplete(data){
@@ -1158,31 +1245,52 @@
         if (!entry) continue;
         const lowerName = entry.lowerName || String(entry.name || '').toLowerCase();
         const def = lowerName ? FILES_BY_NAME[lowerName] : null;
+        const parsed = entry.parsed || {};
+        const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+        const rowCount = Number.isFinite(parsed.rowCount) ? parsed.rowCount : rows.length;
+        const deferred = !!parsed.deferred;
         if (def && containers[def.key]) {
-          if (entry.parsed && Array.isArray(entry.parsed.headers) && Array.isArray(entry.parsed.rows)){
-            parsedData[def.key] = entry.parsed;
+          if (Array.isArray(parsed.headers)){
+            const sourceKey = entry.sourceZip ? String(entry.sourceZip).toLowerCase() : lowerName;
+            const sourceFile = sourceFiles.get(sourceKey);
+            parsedData[def.key] = {
+              headers: parsed.headers,
+              rows: rows,
+              rowCount,
+              deferred,
+              name: entry.name || lowerName,
+              source: entry.sourceZip ? { type:'zip-entry', file: sourceFile, zipEntryPath: entry.zipEntryPath || entry.name, zipName: entry.sourceZip }
+                : { type:'file', file: sourceFile, name: entry.name || lowerName },
+              error: parsed.error || null,
+              sourceZip: entry.sourceZip || null
+            };
             registerLoadedFile(def, entry.name || lowerName);
             const container = containers[def.key];
             if (container){
               container.innerHTML='';
               delete container.dataset.loaded;
               container.dataset.available='true';
+              if (deferred){
+                container.dataset.deferred='true';
+              } else {
+                delete container.dataset.deferred;
+              }
             }
             if (def.key === 'stop_times'){
-              const rowCount = Array.isArray(entry.parsed.rows) ? entry.parsed.rows.length : 0;
-              if (rowCount > STOP_TIMES_FAST_THRESHOLD){
-                fastModeConfig.stop_times = { enabled:true, rowCount, aggregated:null };
+              const effectiveCount = rowCount;
+              if (effectiveCount > STOP_TIMES_FAST_THRESHOLD){
+                fastModeConfig.stop_times = { enabled:true, rowCount: effectiveCount, aggregated:null };
                 if (container){
                   container.dataset.fastMode='true';
                 }
               } else {
-                fastModeConfig.stop_times = { enabled:false, rowCount };
+                fastModeConfig.stop_times = { enabled:false, rowCount: effectiveCount };
                 if (container){
                   delete container.dataset.fastMode;
                 }
               }
             }
-            if (EAGER_LOAD_KEYS.has(def.key)){
+            if (!deferred && EAGER_LOAD_KEYS.has(def.key)){
               ensureTableRendered(def.key);
             }
           } else {
@@ -1195,12 +1303,14 @@
         }
       }
 
+      importDeferred = results.some(item => item?.parsed?.deferred);
+
       failedImports = aggregatedFailed;
       renderFailedFiles(failedImports);
       updateValidationReport();
 
       const previouslyActiveId = document.querySelector('.content.active')?.id || 'home';
-      const simpleReady = SIMPLE_REQUIRED.every(key => parsedData[key]);
+      const simpleReady = SIMPLE_REQUIRED.every(key => parsedData[key] && !parsedData[key].deferred && Array.isArray(parsedData[key].rows));
       if (simpleReady) {
         buildAndRenderSimpleTable();
       }
@@ -1221,7 +1331,11 @@
       showContent(targetId);
 
       setImportInProgress(false);
-      updateImportStatus('Import complete', { autoHide: 2000 });
+      if (importDeferred){
+        updateImportStatus('Import on demand • Open a tab to parse');
+      } else {
+        updateImportStatus('Import complete', { autoHide: 2000 });
+      }
     }
 
     function handleWorkerError(detail){
@@ -1412,6 +1526,7 @@ async function parseBlobToTable(blob, options){
   const hasBlob = !!blob;
   const opts = options && typeof options === 'object' ? options : null;
   const progressOpts = opts && typeof opts.progress === 'object' ? opts.progress : null;
+  const metadataOnly = !!(opts && opts.metadataOnly);
   const canPostMessage = typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof buildProgressPayload === 'function';
   const progressProcessed = progressOpts && Number.isFinite(progressOpts.processed) ? progressOpts.processed : 0;
   const progressTotal = progressOpts && Number.isFinite(progressOpts.total) ? progressOpts.total : 0;
@@ -1451,6 +1566,13 @@ async function parseBlobToTable(blob, options){
     self.postMessage(buildProgressPayload(progressProcessed, progressTotal, progressName, progressMessage, extra));
   };
 
+  const finalizeTable = (raw)=>{
+    const headers = raw && Array.isArray(raw.headers) ? raw.headers : [];
+    const rows = raw && Array.isArray(raw.rows) ? raw.rows : [];
+    const rowCount = Number.isFinite(raw && raw.rowCount) ? raw.rowCount : rows.length;
+    return { headers, rows: metadataOnly ? [] : rows, rowCount, deferred: metadataOnly || (raw && raw.deferred) || false };
+  };
+
   if (blob && blob.stream && typeof TextDecoderStream === 'function'){
     try {
       const parser = createIncrementalCSVParser();
@@ -1464,7 +1586,7 @@ async function parseBlobToTable(blob, options){
       } finally {
         reader.releaseLock();
       }
-      return parser.finish();
+      return finalizeTable(parser.finish());
     } catch (err){
       // Fallback handled below
     }
@@ -1483,7 +1605,7 @@ async function parseBlobToTable(blob, options){
       emitProgress(0, totalBytes > 0 ? 0 : null, true);
       if (totalBytes === 0){
         emitProgress(0, totalBytes > 0 ? 100 : null, true);
-        return parser.finish();
+        return finalizeTable(parser.finish());
       }
       let offset = 0;
       while (offset < totalBytes){
@@ -1499,13 +1621,13 @@ async function parseBlobToTable(blob, options){
         offset = end;
       }
       emitProgress(totalBytes, 100, true);
-      return parser.finish();
+      return finalizeTable(parser.finish());
     } catch (err){
       // Fallback handled below
     }
   }
   const text = await blob.text();
-  return parseCSVText(text);
+  return finalizeTable(parseCSVText(text));
 }
 
 function buildProgressPayload(processed, total, current, message, extra){
@@ -1562,11 +1684,13 @@ function safeNumberFromBigInt(value){
   return 0;
 }
 
-async function handleImport(files){
+async function handleImport(files, meta){
   const results = [];
   const failed = [];
   const tasks = [];
   let total = 0;
+  let totalBytes = 0;
+  const threshold = meta && Number.isFinite(meta.deferThreshold) ? meta.deferThreshold : (10 * 1024 * 1024);
 
   const zipLibAvailable = !!(self.zip && self.zip.ZipReader && self.zip.BlobReader);
 
@@ -1591,6 +1715,7 @@ async function handleImport(files){
           if (!baseName) continue;
           const lower = baseName.toLowerCase();
           if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) continue;
+          totalBytes += safeNumberFromBigInt(entry.uncompressedSize || entry.uncompressedSize64 || entry.size);
           entries.push({ order: order++, entry, name: baseName, lowerName: lower });
         }
         entries.sort(function(a,b){ return a.order - b.order; });
@@ -1608,12 +1733,15 @@ async function handleImport(files){
       }
     } else {
       total += 1;
+      totalBytes += typeof file.size === 'number' ? file.size : 0;
       tasks.push({ type:'file', file, name, lowerName });
     }
   }
 
+  const metadataOnly = !!(meta && meta.deferred) || (Number.isFinite(totalBytes) && totalBytes > threshold);
   let processed = 0;
-  self.postMessage(buildProgressPayload(processed, total, null, total ? 'Starting import' : 'No supported files'));
+  const startLabel = metadataOnly ? 'Starting import (on-demand)' : 'Starting import';
+  self.postMessage(buildProgressPayload(processed, total, null, total ? startLabel : 'No supported files'));
 
   for (const task of tasks){
     if (task.type === 'file'){
@@ -1626,7 +1754,8 @@ async function handleImport(files){
             name: task.name,
             message: 'Reading file',
             totalBytes: Number.isFinite(fileSize) ? fileSize : null
-          }
+          },
+          metadataOnly
         });
         results.push({ name: task.name, lowerName: task.lowerName, parsed });
       } catch (err){
@@ -1701,13 +1830,14 @@ async function handleImport(files){
               name: entryInfo.name,
               message: parseMessage,
               totalBytes: Number.isFinite(parseTotalBytes) ? parseTotalBytes : null
-            }
+            },
+            metadataOnly
           });
           if (!parsed || !parsed.headers){
             throw new Error('Unable to parse entry');
           }
           emitProgress(bytesProcessed || entrySize, 100);
-          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed, sourceZip: task.zipName });
+          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed, sourceZip: task.zipName, zipEntryPath: entryInfo.entry.filename || entryInfo.entry.name || entryInfo.name });
           entrySucceeded = true;
         } catch (err){
           entrySucceeded = false;
@@ -1735,11 +1865,69 @@ async function handleImport(files){
   self.postMessage({ type:'complete', results, failed });
 }
 
+async function handleParseSingle(payload){
+  const data = payload || {};
+  const requestId = data.requestId;
+  const key = data.key || data.lowerName || data.name || '';
+  const sourceType = data.sourceType || 'file';
+  const name = data.name || key || 'file';
+  const lowerName = data.lowerName || String(name).toLowerCase();
+  try {
+    if (sourceType === 'zip-entry'){
+      if (!data.file || !self.zip || !self.zip.ZipReader){
+        throw new Error('ZIP source unavailable');
+      }
+      const reader = new self.zip.ZipReader(new self.zip.BlobReader(data.file), { useWebWorkers:false });
+      try {
+        const entries = await reader.getEntries();
+        const target = entries.find(entry => {
+          const path = entry.filename || entry.name || '';
+          const base = path.split('/').pop();
+          return path === data.entryPath || base === data.entryPath;
+        });
+        if (!target){
+          throw new Error('ZIP entry not found');
+        }
+        const writer = new self.zip.BlobWriter('text/plain');
+        const blob = await target.getData(writer);
+        const parsed = await parseBlobToTable(blob, {
+          progress: {
+            processed:0,
+            total:1,
+            name,
+            message:'Parsing ZIP entry',
+            totalBytes: typeof blob.size === 'number' ? blob.size : null
+          }
+        });
+        self.postMessage({ type:'single-complete', requestId, key, name, lowerName, parsed, sourceZip: data.zipName || data.file?.name || null });
+      } finally {
+        try { await reader.close(); } catch (_) {}
+      }
+    } else {
+      if (!data.file){
+        throw new Error('File unavailable');
+      }
+      const totalBytes = typeof data.file.size === 'number' ? data.file.size : null;
+      const parsed = await parseBlobToTable(data.file, {
+        progress: { processed:0, total:1, name, message:'Parsing file', totalBytes }
+      });
+      self.postMessage({ type:'single-complete', requestId, key, name, lowerName, parsed });
+    }
+  } catch (err){
+    const message = err && err.message ? err.message : 'On-demand parse failed';
+    self.postMessage({ type:'single-error', requestId, key, message });
+  }
+}
+
 self.onmessage = function(event){
   const data = event.data || {};
   if (data.type === 'import'){
-    handleImport(Array.isArray(data.files) ? data.files : []).catch(function(err){
+    handleImport(Array.isArray(data.files) ? data.files : [], data).catch(function(err){
       self.postMessage({ type:'error', message: err && err.message ? err.message : 'Unknown worker error' });
+    });
+  } else if (data.type === 'parse-single'){
+    handleParseSingle(data).catch(function(err){
+      self.postMessage({ type:'single-error', requestId: data.requestId, key: data.key, message: err && err.message ? err.message : 'Unknown worker error' });
     });
   }
 };
@@ -1813,21 +2001,67 @@ self.onmessage = function(event){
       });
     }
 
-    function ensureTableRendered(key){
+    async function ensureTableRendered(key){
       const container = containers[key];
       if (!container || container.dataset.loaded === 'true') return;
       const data = parsedData[key];
       if (!data) return;
+      if (data.deferred && (!Array.isArray(data.rows) || !data.rows.length)){
+        await hydrateDeferredData(key, data, container);
+      }
+      const latest = parsedData[key];
+      if (!latest || !Array.isArray(latest.headers)) return;
       if (key === 'stop_times' && fastModeConfig.stop_times?.enabled){
-        renderStopTimesFastMode(container, data, fastModeConfig.stop_times);
+        renderStopTimesFastMode(container, latest, fastModeConfig.stop_times);
       } else {
-        renderDataTable(container, data.headers, data.rows, FRIENDLY[key] || key);
+        renderDataTable(container, latest.headers, latest.rows, FRIENDLY[key] || key);
         if (container.dataset.fastMode){
           delete container.dataset.fastMode;
         }
       }
       container.dataset.loaded='true';
       container.dataset.available='true';
+      delete container.dataset.deferred;
+    }
+
+    function hydrateDeferredData(key, data, container){
+      if (!data || !data.source || data.loadingPromise) return data.loadingPromise;
+      if (!parserWorker){
+        initParserWorker();
+      }
+      const source = data.source;
+      if (!source.file){
+        const error = 'Original file unavailable for on-demand parsing';
+        data.error = error;
+        return Promise.reject(new Error(error));
+      }
+      const requestId = `${key}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const payload = {
+        type:'parse-single',
+        requestId,
+        key,
+        name: data.name || key,
+        lowerName: key,
+        sourceType: source.type,
+        file: source.file,
+        entryPath: source.zipEntryPath,
+        zipName: source.zipName
+      };
+      container.dataset.deferred='true';
+      updateImportStatus(`Parsing ${data.name || key} on demand...`);
+      const promise = new Promise((resolve, reject) => {
+        pendingParses.set(requestId, { resolve, reject, key });
+        try {
+          parserWorker.postMessage(payload);
+        } catch (err){
+          pendingParses.delete(requestId);
+          reject(err);
+        }
+      });
+      data.loadingPromise = promise.finally(() => {
+        delete data.loadingPromise;
+      });
+      return data.loadingPromise;
     }
 
     function renderStopTimesFastMode(container, data, fastState){
