@@ -640,10 +640,21 @@
     }
 
     function showContent(id) {
+      const previousActive = document.querySelector('.content.active');
+      const previousId = previousActive?.id;
+      if (previousId && previousId !== id && previousId.startsWith('tab-')){
+        const previousKey = previousId.slice(4);
+        if (previousKey) handleTabLeave(previousKey);
+      }
+
       document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
       if (id && id.startsWith('tab-')){
         const key = id.slice(4);
         if (key){
+          const currentData = parsedData[key];
+          if (currentData && currentData.discardOnLeave){
+            delete currentData.discardOnLeave;
+          }
           if (key === 'simple'){
             prepareSimpleTab();
           } else {
@@ -1386,6 +1397,48 @@
       return text;
     }
 
+    function isFileTabKey(key){
+      return key && key !== 'simple' && key !== 'validation';
+    }
+
+    function clearTabParsedData(key){
+      const data = parsedData[key];
+      if (!data) return;
+      const container = containers[key];
+      const hadRows = Array.isArray(data.rows) && data.rows.length;
+      if (!hadRows && data.deferred && !data.discardOnLeave) return;
+      data.rows = [];
+      data.deferred = true;
+      delete data.discardOnLeave;
+      if (container){
+        container.innerHTML='';
+        container.dataset.available='true';
+        container.dataset.deferred='true';
+        delete container.dataset.loaded;
+        delete container.dataset.loading;
+        container.removeAttribute('aria-busy');
+      }
+      if (key === 'stop_times'){
+        fastModeConfig.stop_times = { enabled:false, rowCount: data.rowCount, aggregated:null };
+        if (container){
+          delete container.dataset.fastMode;
+        }
+      }
+      importDeferred = hasDeferredTables();
+      syncImportStatusSummary();
+    }
+
+    function handleTabLeave(key){
+      if (!isFileTabKey(key)) return;
+      const data = parsedData[key];
+      if (!data || !data.deferred) return;
+      if (data.loadingPromise){
+        data.discardOnLeave = true;
+        return;
+      }
+      clearTabParsedData(key);
+    }
+
     function handleWorkerMessage(event){
       const data = event.data || {};
       if (data.type === 'progress'){
@@ -1462,7 +1515,13 @@
       importDeferred = hasDeferredTables();
       const summaryText = syncImportStatusSummary('On-demand parse complete');
       updateImportStatus(summaryText || 'On-demand parse complete', { autoHide: 2000 });
+      const shouldDiscard = current.discardOnLeave && document.querySelector('.content.active')?.id !== `tab-${key}`;
+      delete current.discardOnLeave;
       resolver?.resolve?.(parsed);
+      if (shouldDiscard){
+        clearTabParsedData(key);
+        return;
+      }
       ensureTableRendered(key);
       const simpleReady = SIMPLE_REQUIRED.every(itemKey => parsedData[itemKey] && !parsedData[itemKey].deferred && Array.isArray(parsedData[itemKey].rows));
       if (simpleReady){
