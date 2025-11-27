@@ -2028,8 +2028,9 @@ async function handleImport(files, meta){
   const failed = [];
   const tasks = [];
   let total = 0;
-  let totalBytes = 0;
   const threshold = meta && Number.isFinite(meta.deferThreshold) ? meta.deferThreshold : (10 * 1024 * 1024);
+  const totalBytesFromMeta = meta && Number.isFinite(meta.totalBytes) ? meta.totalBytes : null;
+  let totalBytes = Number.isFinite(totalBytesFromMeta) ? totalBytesFromMeta : 0;
 
   const zipLibAvailable = !!(self.zip && self.zip.ZipReader && self.zip.BlobReader);
 
@@ -2054,8 +2055,11 @@ async function handleImport(files, meta){
           if (!baseName) continue;
           const lower = baseName.toLowerCase();
           if (!lower.endsWith('.txt') && !lower.endsWith('.csv') && !lower.endsWith('.geojson')) continue;
-          totalBytes += safeNumberFromBigInt(entry.uncompressedSize || entry.uncompressedSize64 || entry.size);
           entries.push({ order: order++, entry, name: baseName, lowerName: lower });
+        }
+        if (!Number.isFinite(totalBytesFromMeta)){
+          const fileBytes = typeof file.size === 'number' ? file.size : 0;
+          totalBytes += fileBytes;
         }
         entries.sort(function(a,b){ return a.order - b.order; });
         if (!entries.length){
@@ -2072,7 +2076,9 @@ async function handleImport(files, meta){
       }
     } else {
       total += 1;
-      totalBytes += typeof file.size === 'number' ? file.size : 0;
+      if (!Number.isFinite(totalBytesFromMeta)){
+        totalBytes += typeof file.size === 'number' ? file.size : 0;
+      }
       tasks.push({ type:'file', file, name, lowerName });
     }
   }
