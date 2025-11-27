@@ -118,6 +118,10 @@
     .status-pill.status-loading{background:var(--surface);color:var(--muted)}
     .status-pill.status-ready{background:color-mix(in srgb, var(--accent) 8%, var(--pill-bg));color:var(--text)}
     #importStatus:empty{display:none}
+    .import-status-block{margin-top:14px;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+    .import-status-details{display:flex;flex-direction:column;gap:6px;min-width:220px}
+    .import-status-summary{color:var(--muted);font-weight:600}
+    .import-status-actions .btn{min-width:140px;font-weight:700}
     .file-pill{margin-top:6px}
     .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:var(--kbd)}
     .loading-card{min-height:240px;display:flex;flex-direction:column;gap:12px;justify-content:center}
@@ -205,7 +209,15 @@
           <div class="hint"><strong>Real-world note:</strong> imports of 30&nbsp;MB and 80&nbsp;MB have worked, but a 60&nbsp;MB one currently fails.</div>
           <a id="sampleLink" class="sample-link" href="#">Load sample feed</a>
           <div id="selectedFiles"></div>
-          <div id="importStatus" class="pill" hidden aria-live="polite"></div>
+          <div id="importStatusBlock" class="import-status-block" hidden>
+            <div class="import-status-details">
+              <div id="importStatus" class="pill" hidden aria-live="polite"></div>
+              <div id="importStatusSummary" class="import-status-summary"></div>
+            </div>
+            <div class="import-status-actions">
+              <button id="importActionBtn" class="btn" type="button" hidden></button>
+            </div>
+          </div>
           <div id="failedFiles" class="fail-box" hidden>
             <h3>Failed to upload</h3>
             <ul id="failedFilesList"></ul>
@@ -333,6 +345,9 @@
     const validationTableBody = document.getElementById('validationTableBody');
     const validationSection = document.getElementById('tab-validation');
     const importStatusEl = document.getElementById('importStatus');
+    const importStatusBlock = document.getElementById('importStatusBlock');
+    const importStatusSummaryEl = document.getElementById('importStatusSummary');
+    const importActionBtn = document.getElementById('importActionBtn');
     let validationHasAlerts = false;
     let validationReady = false;
 
@@ -479,6 +494,7 @@
     let sampleLoading = false;
     const sourceFiles = new Map();
     const pendingParses = new Map();
+    let bulkActionInProgress = false;
 
     function getStoredDeferThresholdMb(){
       const raw = localStorage.getItem(DEFER_THRESHOLD_STORAGE_KEY);
@@ -955,17 +971,38 @@
       if (simpleEl){ simpleEl.innerHTML=''; delete simpleEl.dataset.loaded; }
       parsedData={}; failedImports=[]; fastModeConfig={}; loadedFileNames.clear();
       importDeferred = false;
+      bulkActionInProgress = false;
       sourceFiles.clear();
       pendingParses.clear();
       renderFailedFiles(failedImports);
       updateValidationReport();
       updateImportStatus('');
+      if (importStatusSummaryEl){
+        importStatusSummaryEl.textContent='';
+      }
+      if (importStatusBlock){
+        importStatusBlock.hidden = true;
+      }
+      if (importActionBtn){
+        importActionBtn.hidden = true;
+        importActionBtn.disabled = false;
+      }
       showContent('home');
     }
 
     clearBtn.addEventListener('click', () => {
       if (importInProgress) return;
       resetAppState();
+    });
+
+    importActionBtn?.addEventListener('click', () => {
+      if (importActionBtn.disabled) return;
+      const action = importActionBtn.dataset.action;
+      if (action === 'parse'){
+        parseAllDeferredTables();
+      } else {
+        freeParsedRows();
+      }
     });
 
     function renderSelectedFiles(){
@@ -1218,6 +1255,7 @@
       importInProgress = flag;
       if (chooseBtn) chooseBtn.disabled = flag;
       if (clearBtn) clearBtn.disabled = flag;
+      updateActionButton();
     }
 
     function startAutoImport(){
@@ -1243,6 +1281,71 @@
       if (!processedText) return '';
       const totalText = formatHumanBytes(total);
       return totalText ? `${processedText} / ${totalText}` : processedText;
+    }
+
+    function hasDeferredTables(){
+      return Object.values(parsedData).some(entry => entry?.deferred);
+    }
+
+    function computeImportMetrics(){
+      let parsedRows = 0;
+      let deferredBytes = 0;
+      let deferredTables = 0;
+      let totalTables = 0;
+      Object.values(parsedData).forEach(entry => {
+        if (!entry || !entry.headers) return;
+        totalTables += 1;
+        if (entry.deferred){
+          deferredTables += 1;
+          if (Number.isFinite(entry.originalBytes)){
+            deferredBytes += entry.originalBytes;
+          }
+        } else {
+          parsedRows += getRowCount(entry);
+        }
+      });
+      return { parsedRows, deferredBytes, deferredTables, totalTables };
+    }
+
+    function buildStatusSummary(baseLabel){
+      const metrics = computeImportMetrics();
+      const parts = [];
+      if (baseLabel){
+        parts.push(baseLabel);
+      } else if (metrics.deferredTables){
+        parts.push('Import on demand');
+      } else if (metrics.totalTables){
+        parts.push('Import complete');
+      }
+      if (metrics.parsedRows){
+        parts.push(`${metrics.parsedRows.toLocaleString()} rows parsed`);
+      }
+      if (metrics.deferredBytes){
+        parts.push(`${formatHumanBytes(metrics.deferredBytes)} deferred`);
+      }
+      return { text: parts.join(' • '), metrics };
+    }
+
+    function updateActionButton(metrics = computeImportMetrics()){
+      if (!importActionBtn) return;
+      const hasData = metrics.totalTables > 0;
+      importActionBtn.hidden = !hasData;
+      const hasDeferred = metrics.deferredTables > 0;
+      importActionBtn.textContent = hasDeferred ? 'Parse all tabs' : 'Free memory';
+      importActionBtn.dataset.action = hasDeferred ? 'parse' : 'free';
+      importActionBtn.disabled = importInProgress || bulkActionInProgress || !hasData;
+    }
+
+    function syncImportStatusSummary(baseLabel){
+      const { text, metrics } = buildStatusSummary(baseLabel);
+      if (importStatusSummaryEl){
+        importStatusSummaryEl.textContent = text;
+      }
+      if (importStatusBlock){
+        importStatusBlock.hidden = !metrics.totalTables;
+      }
+      updateActionButton(metrics);
+      return text;
     }
 
     function handleWorkerMessage(event){
@@ -1298,6 +1401,10 @@
       current.rows = Array.isArray(parsed.rows) ? parsed.rows : [];
       current.headers = Array.isArray(parsed.headers) ? parsed.headers : current.headers;
       current.rowCount = Number.isFinite(parsed.rowCount) ? parsed.rowCount : getRowCount(parsed);
+      if (!Number.isFinite(current.originalBytes)){
+        const parsedBytes = Number.isFinite(data.bytes) ? data.bytes : (Number.isFinite(parsed.bytes) ? parsed.bytes : null);
+        current.originalBytes = Number.isFinite(parsedBytes) ? parsedBytes : current.originalBytes;
+      }
       current.deferred = false;
       current.error = parsed.error || null;
       if (containers[key]){
@@ -1314,7 +1421,9 @@
           if (containers[key]) delete containers[key].dataset.fastMode;
         }
       }
-      updateImportStatus('On-demand parse complete', { autoHide: 2000 });
+      importDeferred = hasDeferredTables();
+      const summaryText = syncImportStatusSummary('On-demand parse complete');
+      updateImportStatus(summaryText || 'On-demand parse complete', { autoHide: 2000 });
       resolver?.resolve?.(parsed);
       ensureTableRendered(key);
       const simpleReady = SIMPLE_REQUIRED.every(itemKey => parsedData[itemKey] && !parsedData[itemKey].deferred && Array.isArray(parsedData[itemKey].rows));
@@ -1358,6 +1467,7 @@
               headers: parsed.headers,
               rows: rows,
               rowCount,
+              originalBytes: Number.isFinite(entry.bytes) ? entry.bytes : null,
               deferred,
               name: entry.name || lowerName,
               source: entry.sourceZip ? { type:'zip-entry', file: sourceFile, zipEntryPath: entry.zipEntryPath || entry.name, zipName: entry.sourceZip }
@@ -1431,12 +1541,11 @@
       }
       showContent(targetId);
 
+      importDeferred = hasDeferredTables();
+      const summaryText = syncImportStatusSummary(importDeferred ? 'Import on demand' : 'Import complete');
+      const finalText = importDeferred ? `${summaryText || 'Import on demand'} • Open a tab to parse` : (summaryText || 'Import complete');
       setImportInProgress(false);
-      if (importDeferred){
-        updateImportStatus('Import on demand • Open a tab to parse');
-      } else {
-        updateImportStatus('Import complete', { autoHide: 2000 });
-      }
+      updateImportStatus(finalText, importDeferred ? {} : { autoHide: 2000 });
     }
 
     function handleWorkerError(detail){
@@ -1464,6 +1573,69 @@
           importStatusEl.textContent = '';
         }, options.autoHide);
       }
+    }
+
+    async function parseAllDeferredTables(){
+      const deferredKeys = Object.keys(parsedData).filter(key => parsedData[key]?.deferred);
+      if (!deferredKeys.length) return;
+      bulkActionInProgress = true;
+      updateActionButton();
+      setImportInProgress(true);
+      updateImportStatus('Parsing all deferred tables...');
+      try {
+        for (const key of deferredKeys){
+          try {
+            await ensureTableRendered(key);
+          } catch (err){
+            console.error('Bulk parse failed for', key, err);
+          }
+          importDeferred = hasDeferredTables();
+          syncImportStatusSummary('Parsing deferred tables...');
+        }
+        importDeferred = hasDeferredTables();
+        const summaryText = syncImportStatusSummary(importDeferred ? 'Import on demand' : 'Import complete');
+        updateImportStatus(summaryText || 'Import complete', importDeferred ? {} : { autoHide: 2000 });
+      } finally {
+        bulkActionInProgress = false;
+        setImportInProgress(false);
+        updateActionButton();
+      }
+    }
+
+    function freeParsedRows(){
+      let changed = false;
+      Object.entries(parsedData).forEach(([key, data]) => {
+        if (!data || data.deferred) return;
+        if (Array.isArray(data.rows) && data.rows.length){
+          data.rows = [];
+          data.deferred = true;
+          changed = true;
+          const container = containers[key];
+          if (container){
+            container.innerHTML='';
+            container.dataset.available='true';
+            container.dataset.deferred='true';
+            delete container.dataset.loaded;
+            delete container.dataset.loading;
+            container.removeAttribute('aria-busy');
+          }
+          if (key === 'stop_times'){
+            fastModeConfig.stop_times = { enabled:false, rowCount: data.rowCount, aggregated:null };
+            if (container){
+              delete container.dataset.fastMode;
+            }
+          }
+        }
+      });
+      if (!changed) return;
+      if (simpleEl){
+        simpleEl.innerHTML='';
+        delete simpleEl.dataset.loaded;
+      }
+      importDeferred = hasDeferredTables();
+      const summaryText = syncImportStatusSummary('Rows freed for on-demand parsing');
+      updateImportStatus(summaryText || 'Rows freed for on-demand parsing', { autoHide: 3000 });
+      setTabs(document.querySelector('.content.active')?.id || 'home');
     }
 
     function initParserWorker(){
@@ -1858,7 +2030,7 @@ async function handleImport(files, meta){
           },
           metadataOnly
         });
-        results.push({ name: task.name, lowerName: task.lowerName, parsed });
+        results.push({ name: task.name, lowerName: task.lowerName, parsed, bytes: Number.isFinite(fileSize) ? fileSize : null });
       } catch (err){
         failed.push({ name: task.name, reason: 'Unable to read file' });
       }
@@ -1938,7 +2110,7 @@ async function handleImport(files, meta){
             throw new Error('Unable to parse entry');
           }
           emitProgress(bytesProcessed || entrySize, 100);
-          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed, sourceZip: task.zipName, zipEntryPath: entryInfo.entry.filename || entryInfo.entry.name || entryInfo.name });
+          results.push({ name: entryInfo.name, lowerName: entryInfo.lowerName, parsed, bytes: entrySize, sourceZip: task.zipName, zipEntryPath: entryInfo.entry.filename || entryInfo.entry.name || entryInfo.name });
           entrySucceeded = true;
         } catch (err){
           entrySucceeded = false;
@@ -2000,7 +2172,9 @@ async function handleParseSingle(payload){
             totalBytes: typeof blob.size === 'number' ? blob.size : null
           }
         });
-        self.postMessage({ type:'single-complete', requestId, key, name, lowerName, parsed, sourceZip: data.zipName || data.file?.name || null });
+        const payload = { type:'single-complete', requestId, key, name, lowerName, parsed, sourceZip: data.zipName || data.file?.name || null };
+        if (typeof blob.size === 'number') payload.bytes = blob.size;
+        self.postMessage(payload);
       } finally {
         try { await reader.close(); } catch (_) {}
       }
@@ -2012,7 +2186,9 @@ async function handleParseSingle(payload){
       const parsed = await parseBlobToTable(data.file, {
         progress: { processed:0, total:1, name, message:'Parsing file', totalBytes }
       });
-      self.postMessage({ type:'single-complete', requestId, key, name, lowerName, parsed });
+      const payload = { type:'single-complete', requestId, key, name, lowerName, parsed };
+      if (Number.isFinite(totalBytes)) payload.bytes = totalBytes;
+      self.postMessage(payload);
     }
   } catch (err){
     const message = err && err.message ? err.message : 'On-demand parse failed';
