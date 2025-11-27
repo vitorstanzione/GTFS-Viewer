@@ -114,9 +114,17 @@
     .data-card{height:76vh;max-height:76vh;display:flex;flex-direction:column;}
     .data-card .table-scroll{flex:1;min-height:0;}
     .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;background:var(--pill-bg);border:1px solid var(--border);color:var(--pill-text);font-size:12px}
+    .status-pill{font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+    .status-pill.status-loading{background:var(--surface);color:var(--muted)}
+    .status-pill.status-ready{background:color-mix(in srgb, var(--accent) 8%, var(--pill-bg));color:var(--text)}
     #importStatus:empty{display:none}
     .file-pill{margin-top:6px}
     .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:var(--kbd)}
+    .loading-card{min-height:240px;display:flex;flex-direction:column;gap:12px;justify-content:center}
+    .loading-body{display:flex;align-items:center;gap:12px;padding:12px 0}
+    .loading-spinner{width:22px;height:22px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:spin 1s linear infinite}
+    .loading-text{color:var(--muted);font-weight:600}
+    @keyframes spin{to{transform:rotate(360deg)}}
     /* Filters & pagination */
     .filters th{background:var(--table-head);position:sticky;top:32px;z-index:1}
     .filter-input{width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px}
@@ -2001,16 +2009,76 @@ self.onmessage = function(event){
       });
     }
 
+    function createStatusPill(state, text, options={}){
+      const pill=document.createElement('span');
+      const classes=['pill','status-pill'];
+      if (state){ classes.push(`status-${state}`); }
+      pill.className=classes.join(' ');
+      const label=String(text ?? '').trim() || (state==='loading'?'Loading':'Ready');
+      pill.textContent=label;
+      pill.setAttribute('role','status');
+      pill.setAttribute('aria-live','polite');
+      const ariaLabel = options.ariaLabel || `${label} status`;
+      if (ariaLabel){
+        pill.setAttribute('aria-label', ariaLabel);
+      }
+      return pill;
+    }
+
+    function renderLoadingPlaceholder(container, key, message){
+      if (!container) return;
+      const titleText = FRIENDLY[key] || key || 'Data';
+      container.innerHTML='';
+      delete container.dataset.loaded;
+      container.dataset.loading='true';
+      container.dataset.available='true';
+      container.setAttribute('aria-busy','true');
+      const card=document.createElement('div');
+      card.className='card data-card loading-card';
+      const header=document.createElement('div');
+      header.className='toolbar';
+      const titleEl=document.createElement('h2');
+      titleEl.style.margin='0';
+      titleEl.textContent=titleText;
+      const statusPill=createStatusPill('loading','Loading',{ ariaLabel:`${titleText} is loading` });
+      header.append(titleEl,statusPill);
+      const body=document.createElement('div');
+      body.className='loading-body';
+      const spinner=document.createElement('div');
+      spinner.className='loading-spinner';
+      spinner.setAttribute('role','status');
+      spinner.setAttribute('aria-live','polite');
+      spinner.setAttribute('aria-label', `${titleText} rows are loading`);
+      const textEl=document.createElement('div');
+      textEl.className='loading-text';
+      textEl.textContent=message || 'Preparing table...';
+      body.append(spinner,textEl);
+      card.append(header,body);
+      container.appendChild(card);
+    }
+
     async function ensureTableRendered(key){
       const container = containers[key];
-      if (!container || container.dataset.loaded === 'true') return;
+      if (!container) return;
+      if (container.dataset.loaded === 'true' && container.dataset.loading !== 'true') return;
       const data = parsedData[key];
       if (!data) return;
-      if (data.deferred && (!Array.isArray(data.rows) || !data.rows.length)){
-        await hydrateDeferredData(key, data, container);
+      const needsHydration = data.deferred && (!Array.isArray(data.rows) || !data.rows.length);
+      const existingLoad = data.loadingPromise;
+      if (needsHydration || existingLoad){
+        renderLoadingPlaceholder(container, key, 'Parsing rows on demand...');
+        try {
+          await (existingLoad || hydrateDeferredData(key, data, container));
+        } catch (err){
+          container.removeAttribute('aria-busy');
+          delete container.dataset.loading;
+          return;
+        }
       }
       const latest = parsedData[key];
-      if (!latest || !Array.isArray(latest.headers)) return;
+      if (!latest || !Array.isArray(latest.headers) || latest.deferred || latest.loadingPromise) return;
+      container.removeAttribute('aria-busy');
+      delete container.dataset.loading;
       if (key === 'stop_times' && fastModeConfig.stop_times?.enabled){
         renderStopTimesFastMode(container, latest, fastModeConfig.stop_times);
       } else {
@@ -2069,9 +2137,13 @@ self.onmessage = function(event){
       container.dataset.fastMode='true';
       const noticeCard=document.createElement('div');
       noticeCard.className='card';
+      const headerBar=document.createElement('div');
+      headerBar.className='toolbar';
       const noticeTitle=document.createElement('h2');
-      noticeTitle.style.marginTop='0';
+      noticeTitle.style.margin='0';
       noticeTitle.textContent='Stop Times Fast Mode';
+      const readyPill=createStatusPill('ready','Ready',{ ariaLabel:'Stop Times data ready' });
+      headerBar.append(noticeTitle, readyPill);
       const noticeBody=document.createElement('p');
       const rowCount=fastState?.rowCount ?? data.rows.length;
       noticeBody.innerHTML=`<strong>${rowCount.toLocaleString()} rows</strong> detected in <span class="kbd">stop_times.txt</span>. Displaying aggregated results by <code>trip_id</code> for faster browsing.`;
@@ -2079,7 +2151,7 @@ self.onmessage = function(event){
       noticeHint.className='hint';
       noticeHint.style.marginBottom='0';
       noticeHint.textContent='Export actions will use the aggregated view. Reduce the dataset to exit Fast Mode.';
-      noticeCard.append(noticeTitle, noticeBody, noticeHint);
+      noticeCard.append(headerBar, noticeBody, noticeHint);
       container.appendChild(noticeCard);
 
       const tableHost=document.createElement('div');
@@ -2180,6 +2252,7 @@ self.onmessage = function(event){
       const card=document.createElement('div'); card.className='card data-card';
       const headerBar=document.createElement('div'); headerBar.className='toolbar';
       const titleEl=document.createElement('h2'); titleEl.style.margin='0'; titleEl.textContent=title;
+      const statusPill=createStatusPill('ready','Ready',{ ariaLabel:`${title} data ready` });
       const countEl=document.createElement('span'); countEl.className='pill'; countEl.textContent=`${rows.length.toLocaleString()} rows`;
       const exportWrap=document.createElement('div'); exportWrap.className='actions';
       const exportSelect=document.createElement('select'); exportSelect.className='select'; exportSelect.setAttribute('aria-label','Export data');
@@ -2196,7 +2269,7 @@ self.onmessage = function(event){
       const pager=document.createElement('div'); pager.className='pagination';
       const btnFirst=mkBtn('⏮'), btnPrev=mkBtn('◀'), pageInfo=document.createElement('span'), btnNext=mkBtn('▶'), btnLast=mkBtn('⏭'); pageInfo.className='pill';
       pager.append(btnFirst,btnPrev,pageInfo,btnNext,btnLast);
-      headerBar.append(titleEl,countEl,exportWrap,spacer,pageSizeSel,pager);
+      headerBar.append(titleEl,statusPill,countEl,exportWrap,spacer,pageSizeSel,pager);
       const scroller=document.createElement('div'); scroller.className='scroll table-scroll';
       const table=document.createElement('table');
       const thead=document.createElement('thead'); const trHead=document.createElement('tr'); const headerCells=[]; headers.forEach((h,idx)=>{ const th=document.createElement('th'); th.classList.add('sortable'); th.setAttribute('aria-sort','none'); const inner=document.createElement('span'); inner.className='header-inner'; const label=document.createElement('span'); label.textContent=h; const indicator=document.createElement('span'); indicator.className='sort-indicator'; indicator.textContent=''; inner.append(label,indicator); th.appendChild(inner); th.addEventListener('click',()=>{ if(state.sortColumn===idx){ state.sortDirection=state.sortDirection==='asc'?'desc':'asc'; } else { state.sortColumn=idx; state.sortDirection='asc'; } state.page=1; draw(); }); headerCells.push({th,indicator}); trHead.appendChild(th); }); thead.appendChild(trHead);
