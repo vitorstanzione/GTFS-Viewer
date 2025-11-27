@@ -120,7 +120,10 @@
     #importStatus:empty{display:none}
     .import-status-block{margin-top:14px;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
     .import-status-details{display:flex;flex-direction:column;gap:6px;min-width:220px}
-    .import-status-summary{color:var(--muted);font-weight:600}
+    .import-status-summary-card{margin-left:auto;display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);flex-wrap:wrap}
+    .import-status-summary-lines{display:flex;flex-direction:column;gap:4px;min-width:180px}
+    .import-status-summary-primary{color:var(--text);font-weight:800}
+    .import-status-summary-secondary{color:var(--muted);font-weight:600}
     .import-status-actions .btn{min-width:140px;font-weight:700}
     .file-pill{margin-top:6px}
     .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;color:var(--kbd)}
@@ -212,10 +215,15 @@
           <div id="importStatusBlock" class="import-status-block" hidden>
             <div class="import-status-details">
               <div id="importStatus" class="pill" hidden aria-live="polite"></div>
-              <div id="importStatusSummary" class="import-status-summary"></div>
             </div>
-            <div class="import-status-actions">
-              <button id="importActionBtn" class="btn" type="button" hidden></button>
+            <div class="import-status-summary-card">
+              <div class="import-status-summary-lines">
+                <div id="importStatusSummaryPrimary" class="import-status-summary-primary"></div>
+                <div id="importStatusSummarySecondary" class="import-status-summary-secondary"></div>
+              </div>
+              <div class="import-status-actions">
+                <button id="importActionBtn" class="btn" type="button" hidden></button>
+              </div>
             </div>
           </div>
           <div id="failedFiles" class="fail-box" hidden>
@@ -349,7 +357,8 @@
     const validationSection = document.getElementById('tab-validation');
     const importStatusEl = document.getElementById('importStatus');
     const importStatusBlock = document.getElementById('importStatusBlock');
-    const importStatusSummaryEl = document.getElementById('importStatusSummary');
+    const importStatusSummaryPrimaryEl = document.getElementById('importStatusSummaryPrimary');
+    const importStatusSummarySecondaryEl = document.getElementById('importStatusSummarySecondary');
     const importActionBtn = document.getElementById('importActionBtn');
     let validationHasAlerts = false;
     let validationReady = false;
@@ -980,8 +989,13 @@
       renderFailedFiles(failedImports);
       updateValidationReport();
       updateImportStatus('');
-      if (importStatusSummaryEl){
-        importStatusSummaryEl.textContent='';
+      if (importStatusSummaryPrimaryEl){
+        importStatusSummaryPrimaryEl.textContent='';
+        importStatusSummaryPrimaryEl.hidden = true;
+      }
+      if (importStatusSummarySecondaryEl){
+        importStatusSummarySecondaryEl.textContent='';
+        importStatusSummarySecondaryEl.hidden = true;
       }
       if (importStatusBlock){
         importStatusBlock.hidden = true;
@@ -1313,20 +1327,31 @@
     function buildStatusSummary(baseLabel){
       const metrics = computeImportMetrics();
       const parts = [];
+      let primary = '';
+      let secondary = '';
       if (baseLabel){
+        primary = baseLabel;
         parts.push(baseLabel);
       } else if (metrics.deferredTables){
-        parts.push('Import on demand');
+        primary = 'Import on demand';
+        parts.push(primary);
       } else if (metrics.totalTables){
-        parts.push('Import complete');
+        primary = 'Import complete';
+        parts.push(primary);
       }
       if (metrics.parsedRows){
-        parts.push(`${metrics.parsedRows.toLocaleString()} rows parsed`);
+        const parsedText = `${metrics.parsedRows.toLocaleString()} rows parsed`;
+        parts.push(parsedText);
+        if (!secondary){
+          secondary = parsedText;
+        }
       }
       if (metrics.deferredBytes){
-        parts.push(`${formatHumanBytes(metrics.deferredBytes)} deferred`);
+        const deferredText = `${formatHumanBytes(metrics.deferredBytes)} deferred`;
+        parts.push(deferredText);
+        secondary = deferredText;
       }
-      return { text: parts.join(' • '), metrics };
+      return { text: parts.join(' • '), metrics, primary, secondary };
     }
 
     function updateActionButton(metrics = computeImportMetrics()){
@@ -1340,9 +1365,14 @@
     }
 
     function syncImportStatusSummary(baseLabel){
-      const { text, metrics } = buildStatusSummary(baseLabel);
-      if (importStatusSummaryEl){
-        importStatusSummaryEl.textContent = text;
+      const { text, metrics, primary, secondary } = buildStatusSummary(baseLabel);
+      if (importStatusSummaryPrimaryEl){
+        importStatusSummaryPrimaryEl.textContent = primary || '';
+        importStatusSummaryPrimaryEl.hidden = !primary;
+      }
+      if (importStatusSummarySecondaryEl){
+        importStatusSummarySecondaryEl.textContent = secondary || '';
+        importStatusSummarySecondaryEl.hidden = !secondary;
       }
       if (importStatusBlock){
         importStatusBlock.hidden = !metrics.totalTables;
