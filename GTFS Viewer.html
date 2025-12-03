@@ -179,6 +179,8 @@
     .sample-option strong{color:var(--text)}
     .sample-option small{display:block;color:var(--muted)}
     .sample-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .settings-actions{justify-content:flex-end}
+    .settings-title{text-align:center}
     .settings-field{display:flex;flex-direction:column;gap:6px;margin:14px 0}
     .settings-input-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .settings-input{padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);
@@ -321,7 +323,7 @@
 <div id="settingsModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
   <div class="modal-dialog">
     <button type="button" class="modal-close" aria-label="Close settings dialog">×</button>
-    <h2 id="settingsTitle">Settings</h2>
+    <h2 id="settingsTitle" class="settings-title">Settings</h2>
     <form id="settingsForm">
       <div class="settings-field">
         <label id="themeToggleLabel">Theme</label>
@@ -339,7 +341,7 @@
         </div>
         <p id="deferThresholdHelp" class="hint">Larger files will load metadata first and parse on demand.</p>
       </div>
-      <div class="sample-actions">
+      <div class="sample-actions settings-actions">
         <button class="btn primary" type="submit" id="settingsSaveBtn">Save</button>
         <button class="btn" type="button" id="settingsCancelBtn">Cancel</button>
       </div>
