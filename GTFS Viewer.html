@@ -1435,7 +1435,12 @@
     function handleTabLeave(key){
       if (!isFileTabKey(key)) return;
       const data = parsedData[key];
-      if (!data || !data.deferred) return;
+      if (!data) return;
+      if (data.discardOnLeave && !data.loadingPromise){
+        clearTabParsedData(key);
+        return;
+      }
+      if (!data.deferred) return;
       if (data.loadingPromise){
         data.discardOnLeave = true;
         return;
@@ -1519,8 +1524,13 @@
       importDeferred = hasDeferredTables();
       const summaryText = syncImportStatusSummary('On-demand parse complete');
       updateImportStatus(summaryText || 'On-demand parse complete', { autoHide: 2000 });
-      const shouldDiscard = current.discardOnLeave && document.querySelector('.content.active')?.id !== `tab-${key}`;
-      delete current.discardOnLeave;
+      const activeContentId = document.querySelector('.content.active')?.id;
+      const isActiveTab = activeContentId === `tab-${key}`;
+      const shouldDiscard = current.discardOnLeave && !isActiveTab;
+      const shouldDiscardOnLeave = current.discardOnLeave && isActiveTab;
+      if (!shouldDiscardOnLeave){
+        delete current.discardOnLeave;
+      }
       resolver?.resolve?.(parsed);
       if (shouldDiscard){
         clearTabParsedData(key);
